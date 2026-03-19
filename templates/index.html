@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EventPass - Venda de Ingressos</title>
+    <link rel="stylesheet" href="static/styles.css">
+</head>
+<body>
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">🎫 EventPass</div>
+            <div class="nav-right">
+                <div id="user-info" class="user-info" style="display: none;">
+                    <span id="username-display"></span>
+                    <button id="logout-btn" class="btn-logout">Sair</button>
+                </div>
+                <div id="auth-buttons" class="auth-buttons">
+                    <button id="login-link" class="btn btn-secondary">Login</button>
+                    <button id="signup-link" class="btn btn-primary">Cadastro</button>
+                </div>
+                <div class="cart-icon" id="cart-btn">
+                    🛒 <span id="cart-count">0</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTAINER -->
+    <div id="app" class="app-container">
+        <!-- TELA DE EVENTOS -->
+        <section id="events-screen" class="screen active">
+            <div class="events-container">
+                <h1>Próximos Eventos</h1>
+                <div id="events-grid" class="events-grid"></div>
+            </div>
+        </section>
+
+        <!-- TELA DE CARRINHO -->
+        <section id="cart-screen" class="screen">
+            <div class="screen-header">
+                <button class="btn-back" id="back-from-cart">← Voltar</button>
+                <h1>Carrinho de Compras</h1>
+            </div>
+            <div class="cart-container">
+                <div id="cart-items" class="cart-items"></div>
+                <div id="cart-empty" class="cart-empty">
+                    <p>Seu carrinho está vazio</p>
+                </div>
+                <div class="cart-summary" id="cart-summary" style="display: none;">
+                    <h3>Resumo</h3>
+                    <p>Total de ingressos: <span id="total-tickets">0</span></p>
+                    <p>Total: R$ <span id="total-price">0.00</span></p>
+                    <button class="btn btn-primary" id="checkout-btn">Ir para Pagamento</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- TELA DE SELEÇÃO DE INGRESSO -->
+        <section id="ticket-type-screen" class="screen">
+            <div class="screen-header">
+                <button class="btn-back" id="back-from-tickets">← Voltar</button>
+                <h1 id="event-title-ticket"></h1>
+            </div>
+            <div class="ticket-type-container">
+                <div id="ticket-types" class="ticket-types"></div>
+                <div class="ticket-screen-buttons">
+                    <button class="btn btn-secondary" id="back-to-events">Voltar</button>
+                    <button class="btn btn-primary" id="go-to-cart-from-tickets">Ir para Pagamento</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- TELA DE PAGAMENTO -->
+        <section id="payment-screen" class="screen">
+            <div class="screen-header">
+                <button class="btn-back" id="back-from-payment">← Voltar</button>
+                <h1>Pagamento</h1>
+            </div>
+            <div class="payment-container">
+                <div class="payment-summary">
+                    <h3>Resumo do Pedido</h3>
+                    <div id="payment-items"></div>
+                    <p class="total">Total: R$ <span id="payment-total">0.00</span></p>
+                </div>
+                <form id="payment-form" class="payment-form">
+                    <h3>Dados de Pagamento</h3>
+                    <div class="form-group">
+                        <label>Titular do Cartão</label>
+                        <input type="text" id="cardholder" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Número do Cartão</label>
+                        <input type="text" id="cardnumber" placeholder="0000 0000 0000 0000" maxlength="19" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Validade</label>
+                            <input type="text" id="cardexpiry" placeholder="MM/YY" maxlength="5" required>
+                        </div>
+                        <div class="form-group">
+                            <label>CVV</label>
+                            <input type="text" id="cardcvv" placeholder="000" maxlength="3" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Confirmar Pagamento</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- TELA DE INGRESSOS COMPRADOS -->
+        <section id="purchased-screen" class="screen">
+            <div class="screen-header">
+                <button class="btn-back" id="back-from-purchased">← Voltar</button>
+                <h1>Meus Ingressos</h1>
+            </div>
+            <div class="purchased-container">
+                <div class="ticket-filter">
+                    <button class="filter-btn active" data-filter="all">Todos</button>
+                    <button class="filter-btn" data-filter="upcoming">Próximos</button>
+                    <button class="filter-btn" data-filter="past">Passados</button>
+                </div>
+                <div id="purchased-tickets" class="purchased-tickets"></div>
+                <div id="no-tickets" class="no-tickets" style="display: none;">
+                    <p>Você ainda não comprou nenhum ingresso</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- TELA DE LOGIN -->
+        <section id="login-screen" class="screen">
+            <div class="auth-container">
+                <div class="auth-card">
+                    <button class="btn-back-auth" id="back-from-login">← Voltar</button>
+                    <h1>Login</h1>
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="login-email" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Senha</label>
+                            <input type="password" id="login-password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Entrar</button>
+                    </form>
+                    <p class="auth-switch">Não tem conta? <span id="switch-to-signup" class="link">Cadastre-se</span></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- TELA DE CADASTRO -->
+        <section id="signup-screen" class="screen">
+            <div class="auth-container">
+                <div class="auth-card">
+                    <button class="btn-back-auth" id="back-from-signup">← Voltar</button>
+                    <h1>Cadastro</h1>
+                    <form id="signup-form">
+                        <div class="form-group">
+                            <label>Nome Completo</label>
+                            <input type="text" id="signup-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="signup-email" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Senha</label>
+                            <input type="password" id="signup-password" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Confirmar Senha</label>
+                            <input type="password" id="signup-password-confirm" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Cadastrar</button>
+                    </form>
+                    <p class="auth-switch">Já tem conta? <span id="switch-to-login" class="link">Faça login</span></p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="static/script.js"></script>
+</body>
+</html>
