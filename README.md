@@ -103,6 +103,3 @@ def test_usuarios():
     return {
         "usuarios": [ {"nome": u["nome"], "email": u["email"]} for u in usuarios ]
     }
-=======
-# Software-Product
->>>>>>> minha-alteracao
