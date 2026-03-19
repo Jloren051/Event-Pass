@@ -1,105 +1,252 @@
-# 🎟️ Sistema de Venda de Ingressos
+# 🎟️ Event Pass
 
-Este projeto é uma aplicação web de venda de ingressos para eventos. Possui cadastro e login de usuários, compra de ingressos, gerenciamento de carrinho e visualização de ingressos comprados.  
+Sistema web de venda de ingressos para eventos, desenvolvido com **Python**, **Flask**, **SQLAlchemy**, **HTML**, **CSS** e **JavaScript**.
 
-O backend é feito em **Flask** e os dados são armazenados no **MongoDB**. O frontend utiliza HTML, CSS e JavaScript.
-
----
-
-## 🛠️ Tecnologias
-
-- **Backend:** Python 3.x, Flask, Flask-CORS  
-- **Banco de Dados:** MongoDB (Atlas ou local)  
-- **Frontend:** HTML, CSS, JavaScript  
-- **Gerenciamento de ambiente:** `.env`  
+O projeto permite cadastrar usuários, realizar login e visualizar eventos disponíveis em uma interface simples e intuitiva.
 
 ---
 
-## ⚡ Funcionalidades
+## 📌 Sobre o projeto
 
-- Cadastro e login de usuários com validação de senha  
-- Cadastro de eventos iniciais (seed)  
-- Listagem de eventos e tipos de ingressos  
-- Carrinho de compras e cálculo automático de total  
-- Pagamento simulado e geração de ingressos  
-- Visualização de ingressos comprados, filtrando futuros e passados  
+O **Event Pass** foi criado com o objetivo de simular uma plataforma de venda de ingressos para eventos.
 
----
+A aplicação possui:
 
-## 📁 Estrutura do Projeto
-
-
-meu-projeto/
-│
-├─ app.py # Backend Flask
-├─ .env # Variáveis de ambiente
-├─ templates/
-│ └─ index.html # HTML principal
-├─ static/
-│ └─ main.js # JavaScript da aplicação
-└─ README.md
-
+- Backend em Flask (API e regras de negócio)
+- Frontend com HTML, CSS e JavaScript
+- Banco de dados relacional com SQLAlchemy
 
 ---
 
-## ⚙️ Configuração do Banco de Dados (.env)
+## 🚀 Tecnologias utilizadas
 
-Crie um arquivo `.env` na raiz do projeto com o seguinte conteúdo:
+### 🔧 Backend
+- Python
+- Flask
+- Flask-CORS
+- Flask-SQLAlchemy
+- bcrypt
+- python-dotenv
 
+### 🎨 Frontend
+- HTML5
+- CSS3
+- JavaScript
 
-MONGO_URI=mongodb+srv://SEU_USUARIO:SUA_SENHA@cluster0.mongodb.net
-DATABASE_NAME=nome_do_banco
-SECRET_KEY=sua_chave_aleatoria
-
-
-> Substitua `SEU_USUARIO`, `SUA_SENHA` e `nome_do_banco` pelos dados do seu MongoDB Atlas ou MongoDB local.  
-> `SECRET_KEY` pode ser qualquer string para uso interno do Flask.  
+### 🗄️ Banco de dados
+- SQLite / MySQL / PostgreSQL (configurável via `.env`)
 
 ---
 
-## 🚀 Como rodar o projeto
+## 📂 Estrutura do projeto
 
-1. Instale as dependências:
+```
+Event-Pass/
+├── app.py
+├── requirements.txt
+├── .env
+├── templates/
+│   └── index.html
+└── static/
+    ├── script.js
+    └── styles.css
+```
 
-```bash
-pip install flask flask-cors pymongo python-dotenv bcrypt
+---
 
-Certifique-se de que o MongoDB está acessível (Atlas ou local).
+## ⚙️ Funcionalidades
 
-Execute a aplicação:
+- Cadastro de usuários  
+- Login com senha criptografada  
+- Listagem de eventos  
+- Inserção de eventos iniciais (seed)  
+- Interface web integrada  
+- Navegação entre telas  
 
+---
+
+## 🧠 Como funciona
+
+Ao iniciar o projeto:
+
+1. O Flask carrega as variáveis do `.env`
+2. Conecta ao banco via SQLAlchemy
+3. Cria as tabelas automaticamente
+4. Renderiza a interface web
+5. O frontend consome as rotas da API
+
+---
+
+## 🔐 Variáveis de ambiente
+
+Crie um arquivo `.env` na raiz do projeto:
+
+```
+SECRET_KEY=sua_chave_secreta
+DB_URI=sqlite:///eventpass.db
+```
+
+### Outros bancos (opcional)
+
+**MySQL**
+```
+DB_URI=mysql+pymysql://usuario:senha@localhost/eventpass
+```
+
+**PostgreSQL**
+```
+DB_URI=postgresql://usuario:senha@localhost/eventpass
+```
+
+---
+
+## ▶️ Como executar o projeto
+
+### 1. Clonar o repositório
+```
+git clone https://github.com/Jloren051/Event-Pass.git
+```
+
+### 2. Entrar na pasta
+```
+cd Event-Pass
+```
+
+### 3. Criar ambiente virtual
+
+**Windows**
+```
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+**Linux / Mac**
+```
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 4. Instalar dependências
+```
+pip install -r requirements.txt
+```
+
+### 5. Criar arquivo `.env`
+Use o modelo mostrado acima.
+
+### 6. Rodar o projeto
+```
 python app.py
+```
 
-Abra no navegador:
+### 7. Acessar no navegador
+```
+http://127.0.0.1:5000
+```
 
-http://localhost:5000
-🔧 Rotas importantes da API
-Usuários
-Rota	Método	Descrição
-/cadastrar	POST	Cadastra usuário no banco
-/login	POST	Realiza login e valida senha
-Eventos
-Rota	Método	Descrição
-/eventos	GET	Lista todos os eventos
-/seed-eventos	POST	Insere eventos iniciais (seed)
-Pedidos
-Rota	Método	Descrição
-/pedidos	POST	Cria um pedido de compra
-/pedidos/<email>	GET	Lista pedidos de um usuário
-/ingressos/<email>	GET	Lista ingressos de um usuário
-💡 Testando usuários no MongoDB
+---
 
-Para verificar os cadastros diretamente:
+## 🔗 Rotas da aplicação
 
-Acesse seu MongoDB Atlas ou MongoDB local.
+### Página
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/` | Página principal |
 
-Na coleção usuarios do banco definido no .env, você verá os documentos com nome, email e senha (criptografada).
+### Usuários
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | `/cadastrar` | Cadastro de usuário |
+| POST | `/login` | Login |
 
-Opcionalmente, crie uma rota temporária no app.py:
+### Eventos
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/eventos` | Listar eventos |
+| POST | `/seed-eventos` | Inserir eventos iniciais |
 
-@app.route("/test-usuarios")
-def test_usuarios():
-    usuarios = list(usuarios_colecao.find())
-    return {
-        "usuarios": [ {"nome": u["nome"], "email": u["email"]} for u in usuarios ]
-    }
+---
+
+## 📝 Exemplos de requisição
+
+### Cadastro
+```json
+POST /cadastrar
+{
+  "nome": "Julia",
+  "email": "julia@email.com",
+  "senha": "123456",
+  "confirmarSenha": "123456"
+}
+```
+
+### Login
+```json
+POST /login
+{
+  "email": "julia@email.com",
+  "senha": "123456"
+}
+```
+
+---
+
+## 📸 Interface
+
+A aplicação possui:
+
+- Tela de login  
+- Tela de cadastro  
+- Listagem de eventos  
+- Navegação entre telas  
+- Área do usuário  
+
+---
+
+## ⚠️ Observações
+
+- Senhas são criptografadas com `bcrypt`
+- O banco é configurado via `.env`
+- A rota `/seed-eventos` popula o banco inicialmente
+- Pode ser necessário ajustar o `requirements.txt`
+
+---
+
+## 🔧 Melhorias futuras
+
+- Carrinho de compras  
+- Pagamento de ingressos  
+- Geração de tickets  
+- Autenticação com JWT  
+- Painel administrativo  
+- Upload de imagens  
+
+---
+
+## 👩‍💻 Integrantes
+
+### Júlia Lourenço
+- GitHub: https://github.com/Jloren051  
+- LinkedIn: https://www.linkedin.com/in/julia-louren%C3%A7o-8065082ba/
+
+### Erick Xavier
+- GitHub: https://github.com/ErickXr  
+- LinkedIn: https://www.linkedin.com/in/erickxavierdev/
+
+---
+
+## 📄 Licença
+
+Projeto desenvolvido para fins acadêmicos.
+
+---
+
+## 📦 requirements.txt sugerido
+
+```
+flask
+flask-cors
+flask-sqlalchemy
+python-dotenv
+bcrypt
+```
