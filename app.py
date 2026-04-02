@@ -8,7 +8,14 @@ import os
 
 load_dotenv()
 
-app = Flask(__name__)
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(os.path.dirname(__file__), 'templates'),
+    static_folder=os.path.join(os.path.dirname(__file__), 'static'),
+    static_url_path='/static'
+)
+
 CORS(app)
 
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
@@ -36,7 +43,6 @@ class Evento(db.Model):
     local = db.Column(db.String(100), nullable=False)
     imagem = db.Column(db.String(255))
     preco = db.Column(db.Float, nullable=False)
-    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
     tipos_ingresso = db.relationship("TipoIngresso", backref="evento", lazy=True, cascade="all, delete-orphan")
 
 
@@ -49,10 +55,75 @@ class TipoIngresso(db.Model):
     descricao = db.Column(db.String(255))
     preco = db.Column(db.Float, nullable=False)
     quantidade_disponivel = db.Column(db.Integer, default=100)
-    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
 
 with app.app_context():
     db.create_all()
+    
+    # Criar eventos padrão se não existirem
+    if not Evento.query.first():
+        print("\n🌱 Criando eventos padrão...\n")
+        
+        eventos_data = [
+            {
+                "titulo": "Festa Eletrônica 2026",
+                "data": "15/04/2026",
+                "local": "São Paulo",
+                "imagem": "🎵",
+                "preco": 80,
+                "tipos": [
+                    {"nome": "Inteira", "descricao": "Ingresso inteiro", "preco": 80, "quantidade": 100},
+                    {"nome": "Meia Entrada", "descricao": "Meia entrada", "preco": 40, "quantidade": 50}
+                ]
+            },
+            {
+                "titulo": "Show de Rock",
+                "data": "20/05/2026",
+                "local": "Rio de Janeiro",
+                "imagem": "🎸",
+                "preco": 100,
+                "tipos": [
+                    {"nome": "Inteira", "descricao": "Ingresso inteiro", "preco": 100, "quantidade": 100},
+                    {"nome": "Meia Entrada", "descricao": "Meia entrada", "preco": 50, "quantidade": 50},
+                    {"nome": "Meia Idoso", "descricao": "60+ anos", "preco": 50, "quantidade": 30}
+                ]
+            },
+            {
+                "titulo": "Festival de Música",
+                "data": "10/06/2026",
+                "local": "Belo Horizonte",
+                "imagem": "🎭",
+                "preco": 120,
+                "tipos": [
+                    {"nome": "Inteira", "descricao": "Ingresso inteiro", "preco": 120, "quantidade": 100},
+                    {"nome": "Meia Entrada", "descricao": "Meia entrada", "preco": 60, "quantidade": 50},
+                    {"nome": "Meia Social", "descricao": "Comprovante de baixa renda", "preco": 60, "quantidade": 40}
+                ]
+            }
+        ]
+        
+        for evento_data in eventos_data:
+            evento = Evento(
+                titulo=evento_data["titulo"],
+                data=evento_data["data"],
+                local=evento_data["local"],
+                imagem=evento_data["imagem"],
+                preco=evento_data["preco"]
+            )
+            db.session.add(evento)
+            db.session.flush()
+            
+            for tipo_data in evento_data["tipos"]:
+                tipo = TipoIngresso(
+                    evento_id=evento.id,
+                    nome=tipo_data["nome"],
+                    descricao=tipo_data["descricao"],
+                    preco=tipo_data["preco"],
+                    quantidade_disponivel=tipo_data["quantidade"]
+                )
+                db.session.add(tipo)
+        
+        db.session.commit()
+        print("✅ 3 eventos criados com sucesso!\n")
 
 # ==================== AUTENTICAÇÃO ====================
 
@@ -127,21 +198,24 @@ def login():
 
 @app.route("/eventos", methods=["GET"])
 def listar_eventos():
-    eventos = Evento.query.all()
+    try:
+        eventos = Evento.query.all()
 
-    lista = []
-    for e in eventos:
-        lista.append({
-            "id": e.id,
-            "titulo": e.titulo,
-            "data": e.data,
-            "local": e.local,
-            "emoji": e.imagem,
-            "preco": e.preco,
-            "criado_em": e.criado_em.isoformat()
-        })
+        lista = []
+        for e in eventos:
+            lista.append({
+                "id": e.id,
+                "titulo": e.titulo,
+                "data": e.data,
+                "local": e.local,
+                "emoji": e.imagem,
+                "preco": e.preco
+            })
 
-    return jsonify(lista), 200
+        return jsonify(lista), 200
+    except Exception as err:
+        print(f"Erro ao listar eventos: {err}")
+        return jsonify([]), 200
 
 @app.route("/evento/<int:evento_id>", methods=["GET"])
 def obter_evento(evento_id):
@@ -177,9 +251,14 @@ def criar_evento():
     titulo = dados.get("titulo", "").strip()
     data = dados.get("data", "").strip()
     local = dados.get("local", "").strip()
-    preco = dados.get("preco", 0)
     emoji = dados.get("emoji", "🎉")
     tipos_ingresso = dados.get("tipos_ingresso", [])
+    
+    # ✅ CONVERTER PARA FLOAT COM VALIDAÇÃO
+    try:
+        preco = float(dados.get("preco", 0))
+    except (ValueError, TypeError):
+        return jsonify({"mensagem": "Preço inválido"}), 400
 
     if not titulo or not data or not local or preco <= 0:
         return jsonify({"mensagem": "Preencha todos os campos corretamente"}), 400
@@ -238,9 +317,14 @@ def editar_evento(evento_id):
     titulo = dados.get("titulo", "").strip()
     data = dados.get("data", "").strip()
     local = dados.get("local", "").strip()
-    preco = dados.get("preco", 0)
     emoji = dados.get("emoji", "🎉")
     tipos_ingresso = dados.get("tipos_ingresso", [])
+    
+    # ✅ CONVERTER PARA FLOAT COM VALIDAÇÃO
+    try:
+        preco = float(dados.get("preco", 0))
+    except (ValueError, TypeError):
+        return jsonify({"mensagem": "Preço inválido"}), 400
 
     if not titulo or not data or not local or preco <= 0:
         return jsonify({"mensagem": "Preencha todos os campos corretamente"}), 400
