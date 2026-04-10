@@ -154,19 +154,35 @@ function adicionarAoCarrinho(tipoIndex) {
     document.getElementById(`qty-${tipoIndex}`).value,
   );
 
-  const item = {
-    evento_id: eventoSelecionado.id,
-    evento_titulo: eventoSelecionado.titulo,
-    tipo_ingresso_id: tipo.id,
-    tipo_nome: tipo.nome,
-    preco_unitario: tipo.preco,
-    quantidade: quantidade,
-    total: tipo.preco * quantidade,
-  };
-
-  // Armazenar no localStorage
   let carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
-  carrinho.push(item);
+
+  // Verifica se o item já existe no carrinho
+  const itemExistenteIndex = carrinho.findIndex(
+    (item) =>
+      item.evento_id === eventoSelecionado.id &&
+      item.tipo_ingresso_id === tipo.id,
+  );
+
+  if (itemExistenteIndex > -1) {
+    // Se existe, atualiza a quantidade
+    carrinho[itemExistenteIndex].quantidade += quantidade;
+    carrinho[itemExistenteIndex].total =
+      carrinho[itemExistenteIndex].quantidade *
+      carrinho[itemExistenteIndex].preco_unitario;
+  } else {
+    // Se não existe, adiciona novo item
+    const item = {
+      evento_id: eventoSelecionado.id,
+      evento_titulo: eventoSelecionado.titulo,
+      tipo_ingresso_id: tipo.id,
+      tipo_nome: tipo.nome,
+      preco_unitario: tipo.preco,
+      quantidade: quantidade,
+      total: tipo.preco * quantidade,
+    };
+    carrinho.push(item);
+  }
+
   localStorage.setItem("carrinho", JSON.stringify(carrinho));
 
   alert(`${quantidade}x ${tipo.nome} adicionado ao carrinho!`);
@@ -177,6 +193,60 @@ function atualizarContadorCarrinho() {
   const carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
   const total = carrinho.reduce((sum, item) => sum + item.quantidade, 0);
   document.getElementById("cart-count").textContent = total;
+}
+
+// ==================== CARRINHO ====================
+
+function renderCarrinho() {
+  const carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
+  const itemsContainer = document.getElementById("cart-items");
+  const summary = document.getElementById("cart-summary");
+  const emptyMsg = document.getElementById("cart-empty");
+
+  if (carrinho.length === 0) {
+    itemsContainer.innerHTML = "";
+    summary.style.display = "none";
+    emptyMsg.style.display = "block";
+    return;
+  }
+
+  summary.style.display = "block";
+  emptyMsg.style.display = "none";
+
+  itemsContainer.innerHTML = carrinho
+    .map(
+      (item, index) => `
+    <div class="cart-item">
+        <div class="cart-item-info">
+            <div class="cart-item-title">${item.evento_titulo}</div>
+            <div class="cart-item-ticket">${item.tipo_nome}</div>
+            <div class="cart-item-price">
+                ${item.quantidade} x R$ ${item.preco_unitario.toFixed(2)}
+            </div>
+        </div>
+        <div class="cart-item-total">
+            <span>R$ ${item.total.toFixed(2)}</span>
+            <button class="btn-remove" onclick="removerDoCarrinho(${index})">Remover</button>
+        </div>
+    </div>
+    `,
+    )
+    .join("");
+
+  const totalTickets = carrinho.reduce((sum, item) => sum + item.quantidade, 0);
+  const totalPrice = carrinho.reduce((sum, item) => sum + item.total, 0);
+
+  document.getElementById("total-tickets").textContent = totalTickets;
+  document.getElementById("total-price").textContent = totalPrice.toFixed(2);
+}
+
+function removerDoCarrinho(index) {
+  let carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
+  carrinho.splice(index, 1);
+  localStorage.setItem("carrinho", JSON.stringify(carrinho));
+
+  renderCarrinho();
+  atualizarContadorCarrinho();
 }
 
 // ==================== AUTENTICAÇÃO ====================
@@ -553,6 +623,18 @@ document.addEventListener("DOMContentLoaded", () => {
       adicionarTipoIngresso("edit-ticket-types-container");
     });
 
+  // CARRINHO
+  document.getElementById("cart-btn").addEventListener("click", () => {
+    renderCarrinho();
+    showScreen("cart-screen");
+  });
+
+  document.getElementById("checkout-btn").addEventListener("click", () => {
+    // Por enquanto, apenas navega para a tela de pagamento
+    // A implementação real validaria o carrinho e prepararia os dados
+    showScreen("payment-screen");
+  });
+
   // NAVEGAÇÃO
   document
     .getElementById("login-link")
@@ -626,6 +708,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("go-to-cart-from-tickets")
     .addEventListener("click", () => {
+      renderCarrinho();
       showScreen("cart-screen");
     });
 });
