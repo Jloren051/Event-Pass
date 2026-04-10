@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from datetime import datetime
 import bcrypt
+import uuid
 import os
 
 load_dotenv()
@@ -32,6 +33,7 @@ class Usuario(db.Model):
     email = db.Column(db.String(100), unique=True, nullable=False)
     senha = db.Column(db.LargeBinary, nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
+    compras = db.relationship("IngressoComprado", back_populates="usuario", lazy=True, cascade="all, delete-orphan")
 
 
 class Evento(db.Model):
@@ -55,6 +57,24 @@ class TipoIngresso(db.Model):
     descricao = db.Column(db.String(255))
     preco = db.Column(db.Float, nullable=False)
     quantidade_disponivel = db.Column(db.Integer, default=100)
+
+class IngressoComprado(db.Model):
+    __tablename__ = "ingressos_comprados"
+
+    id = db.Column(db.Integer, primary_key=True)
+    codigo = db.Column(db.String(100), unique=True, nullable=False)
+    data_compra = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id"), nullable=False)
+    evento_id = db.Column(db.Integer, db.ForeignKey("eventos.id"), nullable=False)
+    tipo_ingresso_id = db.Column(db.Integer, db.ForeignKey("tipos_ingresso.id"), nullable=False)
+    
+    quantidade = db.Column(db.Integer, nullable=False)
+    preco_total = db.Column(db.Float, nullable=False)
+
+    usuario = db.relationship("Usuario", back_populates="compras")
+    evento = db.relationship("Evento")
+    tipo_ingresso = db.relationship("TipoIngresso")
 
 with app.app_context():
     db.create_all()
@@ -382,6 +402,81 @@ def deletar_evento(evento_id):
 
     return jsonify({"mensagem": "Evento deletado com sucesso"}), 200
 
+# ==================== COMPRA ====================
+
+@app.route("/comprar-ingressos", methods=["POST"])
+def comprar_ingressos():
+    dados = request.get_json()
+    usuario_id = dados.get("usuario_id")
+    carrinho = dados.get("carrinho")
+
+    if not usuario_id or not carrinho:
+        return jsonify({"mensagem": "Dados da requisição inválidos"}), 400
+
+    usuario = Usuario.query.get(usuario_id)
+    if not usuario:
+        return jsonify({"mensagem": "Usuário não encontrado"}), 404
+
+    try:
+        for item in carrinho:
+            tipo_ingresso = TipoIngresso.query.get(item.get("tipo_ingresso_id"))
+            if not tipo_ingresso:
+                db.session.rollback()
+                return jsonify({"mensagem": f"Tipo de ingresso ID {item.get('tipo_ingresso_id')} não encontrado."}), 404
+
+            quantidade_comprada = int(item.get("quantidade"))
+            if tipo_ingresso.quantidade_disponivel < quantidade_comprada:
+                db.session.rollback()
+                return jsonify({"mensagem": f"Estoque insuficiente para '{tipo_ingresso.nome}'."}), 400
+
+            tipo_ingresso.quantidade_disponivel -= quantidade_comprada
+
+            nova_compra = IngressoComprado(
+                codigo=f"EVT-{tipo_ingresso.evento_id}-{usuario_id}-{str(uuid.uuid4())[:8].upper()}",
+                usuario_id=usuario_id,
+                evento_id=item.get("evento_id"),
+                tipo_ingresso_id=item.get("tipo_ingresso_id"),
+                quantidade=quantidade_comprada,
+                preco_total=float(item.get("total"))
+            )
+            db.session.add(nova_compra)
+
+        db.session.commit()
+        return jsonify({"mensagem": "Compra realizada com sucesso! Seus ingressos foram gerados."}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erro ao processar compra: {e}")
+        return jsonify({"mensagem": "Ocorreu um erro ao processar sua compra."}), 500
+
+@app.route("/meus-ingressos/<int:usuario_id>", methods=["GET"])
+def meus_ingressos(usuario_id):
+    if not Usuario.query.get(usuario_id):
+        return jsonify({"mensagem": "Usuário não encontrado"}), 404
+
+    compras = IngressoComprado.query.filter_by(usuario_id=usuario_id).order_by(IngressoComprado.data_compra.desc()).all()
+
+    lista_ingressos = []
+    for compra in compras:
+        try:
+            data_evento_obj = datetime.strptime(compra.evento.data, "%d/%m/%Y")
+            status = "próximo" if data_evento_obj.date() >= datetime.utcnow().date() else "passado"
+        except ValueError:
+            status = "indefinido"
+
+        lista_ingressos.append({
+            "codigo": compra.codigo,
+            "data_compra": compra.data_compra.strftime("%d/%m/%Y %H:%M"),
+            "quantidade": compra.quantidade,
+            "preco_total": compra.preco_total,
+            "evento": {
+                "titulo": compra.evento.titulo, "data": compra.evento.data, "local": compra.evento.local,
+                "emoji": compra.evento.imagem, "status": status
+            },
+            "tipo_ingresso": {"nome": compra.tipo_ingresso.nome}
+        })
+
+    return jsonify(lista_ingressos), 200
 # ==================== SEED ====================
 
 @app.route("/seed-eventos", methods=["POST"])

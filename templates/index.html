@@ -14,6 +14,9 @@
         <div class="nav-right">
           <div id="user-info" class="user-info" style="display: none">
             <span id="username-display"></span>
+            <button id="my-tickets-btn" class="btn btn-secondary">
+              Meus Ingressos
+            </button>
             <button
               id="admin-btn"
               class="btn btn-secondary"
@@ -97,48 +100,41 @@
             <div id="payment-items"></div>
             <p class="total">Total: R$ <span id="payment-total">0.00</span></p>
           </div>
-          <form id="payment-form" class="payment-form">
-            <h3>Dados de Pagamento</h3>
-            <div class="form-group">
-              <label>Titular do Cartão</label>
-              <input type="text" id="cardholder" required />
+          <div id="pix-payment-container" class="pix-payment-container">
+            <h3>Pague com PIX</h3>
+            <p>
+              Escaneie o QR Code abaixo com o aplicativo do seu banco para
+              realizar o pagamento.
+            </p>
+            <div
+              id="pix-qrcode-container"
+              style="
+                text-align: center;
+                margin: 1.5rem 0;
+                min-height: 200px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              "
+            >
+              <p>Gerando QR Code...</p>
             </div>
             <div class="form-group">
-              <label>Número do Cartão</label>
-              <input
-                type="text"
-                id="cardnumber"
-                placeholder="0000 0000 0000 0000"
-                maxlength="19"
-                required
-              />
+              <label>Ou use o PIX Copia e Cola:</label>
+              <textarea id="pix-copia-e-cola" rows="4" readonly></textarea>
+              <button type="button" id="copy-pix-btn" class="btn btn-secondary">
+                Copiar Código
+              </button>
             </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Validade</label>
-                <input
-                  type="text"
-                  id="cardexpiry"
-                  placeholder="MM/YY"
-                  maxlength="5"
-                  required
-                />
-              </div>
-              <div class="form-group">
-                <label>CVV</label>
-                <input
-                  type="text"
-                  id="cardcvv"
-                  placeholder="000"
-                  maxlength="3"
-                  required
-                />
-              </div>
-            </div>
-            <button type="submit" class="btn btn-primary">
-              Confirmar Pagamento
-            </button>
-          </form>
+          </div>
+          <button
+            type="button"
+            id="confirm-payment-btn"
+            class="btn btn-primary"
+            style="margin-top: 2rem; width: 100%"
+          >
+            Confirmar Pagamento e Gerar Ingressos
+          </button>
         </div>
       </section>
 
@@ -149,11 +145,6 @@
           <h1>Meus Ingressos</h1>
         </div>
         <div class="purchased-container">
-          <div class="ticket-filter">
-            <button class="filter-btn active" data-filter="all">Todos</button>
-            <button class="filter-btn" data-filter="upcoming">Próximos</button>
-            <button class="filter-btn" data-filter="past">Passados</button>
-          </div>
           <div id="purchased-tickets" class="purchased-tickets"></div>
           <div id="no-tickets" class="no-tickets" style="display: none">
             <p>Você ainda não comprou nenhum ingresso</p>

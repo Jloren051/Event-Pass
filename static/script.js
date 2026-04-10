@@ -45,16 +45,19 @@ function updateNavbar() {
   const userInfo = document.getElementById("user-info");
   const authButtons = document.getElementById("auth-buttons");
   const adminBtn = document.getElementById("admin-btn");
+  const myTicketsBtn = document.getElementById("my-tickets-btn");
 
   if (currentUser) {
     userInfo.style.display = "flex";
     authButtons.style.display = "none";
     document.getElementById("username-display").textContent = currentUser.nome;
     adminBtn.style.display = currentUser.is_admin ? "block" : "none";
+    myTicketsBtn.style.display = "block";
   } else {
     userInfo.style.display = "none";
     authButtons.style.display = "flex";
     adminBtn.style.display = "none";
+    myTicketsBtn.style.display = "none";
   }
 }
 
@@ -255,6 +258,173 @@ function removerDoCarrinho(index) {
   atualizarContadorCarrinho();
 }
 
+// ==================== PAGAMENTO ====================
+
+async function gerarQrCodePix(valorTotal) {
+  const pixContainer = document.getElementById("pix-qrcode-container");
+  const pixText = document.getElementById("pix-copia-e-cola");
+  const copyBtn = document.getElementById("copy-pix-btn");
+
+  pixContainer.innerHTML = "<p>Gerando QR Code...</p>";
+  pixText.value = "Aguarde...";
+  copyBtn.onclick = null;
+
+  try {
+    const chave = "53270726813"; // CPF do usuário
+    // Usa o valor total, ou 0.01 como fallback para evitar erros com valor zero.
+    const valor = valorTotal > 0 ? valorTotal.toFixed(2) : "0.01";
+    const nome = "ERICK XAVIER"; // Nome do recebedor (em maiúsculas, como é boa prática)
+    const cidade = "SAO PAULO"; // Cidade do recebedor
+    // O txid (ID da transação) para esta API de teste precisa ser mais simples.
+    // As tentativas anteriores seguiam o padrão oficial do PIX, mas a API
+    // de teste parece esperar um ID mais curto e numérico.
+    const txid = Date.now().toString().slice(-10); // Gera um ID numérico de 10 dígitos
+
+    const url = `https://prof.utfpr.edu.br/ricardo/api/pix/qrcode.php?chave=${chave}&valor=${valor}&nome=${nome}&cidade=${cidade}&id=${txid}`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`A API de QR Code retornou o status ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    if (data.qrcode) {
+      pixContainer.innerHTML = `<img src="${data.qrcode}" alt="PIX QR Code" style="max-width: 200px; border: 1px solid var(--border-color);">`;
+      pixText.value = data.payload;
+
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(pixText.value).then(
+          () => {
+            alert("Código PIX copiado para a área de transferência!");
+          },
+          () => {
+            alert("Falha ao copiar o código. Tente manualmente.");
+          },
+        );
+      };
+    } else {
+      throw new Error("A resposta da API não continha um QR Code.");
+    }
+  } catch (err) {
+    console.error("Erro ao gerar PIX QR Code:", err);
+    pixContainer.innerHTML =
+      "<p>Não foi possível gerar o QR Code. Tente novamente mais tarde.</p>";
+    pixText.value = "Erro na geração do código.";
+  }
+}
+
+function renderPagamento() {
+  const carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
+  const itemsContainer = document.getElementById("payment-items");
+  const totalEl = document.getElementById("payment-total");
+
+  // Mostra os itens do carrinho no resumo
+  itemsContainer.innerHTML =
+    carrinho.length > 0
+      ? carrinho
+          .map(
+            (item) => `
+        <div class="payment-item" style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 0.5rem;">
+            <span>${item.quantidade}x ${item.tipo_nome} (${item.evento_titulo})</span>
+            <span>R$ ${item.total.toFixed(2)}</span>
+        </div>`,
+          )
+          .join("")
+      : "<p>Nenhum item no carrinho.</p>";
+
+  // Define o valor fixo de 0.01 para o pagamento PIX, conforme solicitado
+  const totalPrice = carrinho.reduce((sum, item) => sum + item.total, 0);
+  totalEl.textContent = totalPrice.toFixed(2);
+
+  // Gera o QR Code do PIX
+  gerarQrCodePix(totalPrice);
+}
+
+async function confirmarPagamento() {
+  if (!currentUser) {
+    alert("Sessão expirada. Faça login novamente.");
+    showScreen("login-screen");
+    return;
+  }
+
+  const carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
+  if (carrinho.length === 0) {
+    alert("Seu carrinho está vazio.");
+    return;
+  }
+
+  try {
+    const res = await fetch("/comprar-ingressos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        usuario_id: currentUser.id,
+        carrinho: carrinho,
+      }),
+    });
+
+    const data = await res.json();
+    alert(data.mensagem);
+
+    if (res.ok) {
+      localStorage.removeItem("carrinho");
+      atualizarContadorCarrinho();
+      await renderMeusIngressos();
+      showScreen("purchased-screen");
+    }
+  } catch (err) {
+    alert("Erro ao processar a compra. Tente novamente.");
+    console.error("Erro na compra:", err);
+  }
+}
+
+// ==================== MEUS INGRESSOS ====================
+
+async function renderMeusIngressos() {
+  if (!currentUser) return;
+  const container = document.getElementById("purchased-tickets");
+  const noTicketsMsg = document.getElementById("no-tickets");
+  container.innerHTML = "<p>Carregando ingressos...</p>";
+  noTicketsMsg.style.display = "none";
+  try {
+    const res = await fetch(`/meus-ingressos/${currentUser.id}`);
+    const ingressos = await res.json();
+    if (!res.ok) throw new Error(ingressos.mensagem || "Erro ao buscar ingressos.");
+
+    if (ingressos.length === 0) {
+      container.innerHTML = "";
+      noTicketsMsg.style.display = "block";
+      return;
+    }
+    noTicketsMsg.style.display = "none";
+
+    container.innerHTML = ingressos
+      .map(
+        (ingresso) => `
+      <div class="purchased-ticket-card">
+          <div class="ticket-header">
+              <div class="ticket-event-title">${ingresso.evento.emoji} ${ingresso.evento.titulo}</div>
+              <div class="ticket-status ${ingresso.evento.status}">${ingresso.evento.status === "próximo" ? "Próximo" : "Realizado"}</div>
+          </div>
+          <div class="ticket-body">
+              <p><strong>Tipo:</strong> ${ingresso.tipo_ingresso.nome}</p>
+              <p><strong>Quantidade:</strong> ${ingresso.quantidade}</p>
+              <p><strong>Data do Evento:</strong> ${ingresso.evento.data}</p>
+              <p><strong>Local:</strong> ${ingresso.evento.local}</p>
+              <p><strong>Código:</strong> <span class="ticket-code">${ingresso.codigo}</span></p>
+          </div>
+          <div class="ticket-footer">
+              Comprado em ${ingresso.data_compra} por R$ ${ingresso.preco_total.toFixed(2)}
+          </div>
+      </div>
+  `,
+      )
+      .join("");
+  } catch (err) {
+    container.innerHTML = `<p style="color: var(--error-color);">${err.message}</p>`;
+  }
+}
 // ==================== AUTENTICAÇÃO ====================
 
 async function cadastrarUsuario(nome, email, senha, confirmarSenha) {
@@ -641,10 +811,19 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("checkout-btn").addEventListener("click", () => {
-    // Por enquanto, apenas navega para a tela de pagamento
-    // A implementação real validaria o carrinho e prepararia os dados
+    renderPagamento();
     showScreen("payment-screen");
   });
+
+  // MEUS INGRESSOS
+  document.getElementById("my-tickets-btn").addEventListener("click", async () => {
+    await renderMeusIngressos();
+    showScreen("purchased-screen");
+  });
+
+  document
+    .getElementById("confirm-payment-btn")
+    .addEventListener("click", confirmarPagamento);
 
   // NAVEGAÇÃO
   document
@@ -694,7 +873,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("back-from-payment").addEventListener("click", () => {
-    showScreen("ticket-type-screen");
+    showScreen("cart-screen");
   });
 
   document
