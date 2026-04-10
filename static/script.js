@@ -147,6 +147,12 @@ function renderTiposIngresso(tipos) {
 }
 
 function adicionarAoCarrinho(tipoIndex) {
+  if (!currentUser) {
+    alert("Você precisa estar logado para adicionar itens ao carrinho.");
+    showScreen("login-screen");
+    return;
+  }
+
   if (!eventoSelecionado) return;
 
   const tipo = eventoSelecionado.tipos_ingresso[tipoIndex];
@@ -625,6 +631,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // CARRINHO
   document.getElementById("cart-btn").addEventListener("click", () => {
+    if (!currentUser) {
+      alert("Você precisa estar logado para ver o carrinho.");
+      showScreen("login-screen");
+      return;
+    }
     renderCarrinho();
     showScreen("cart-screen");
   });
@@ -708,6 +719,11 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("go-to-cart-from-tickets")
     .addEventListener("click", () => {
+      if (!currentUser) {
+        alert("Você precisa estar logado para ver o carrinho.");
+        showScreen("login-screen");
+        return;
+      }
       renderCarrinho();
       showScreen("cart-screen");
     });
