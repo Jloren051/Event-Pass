@@ -5,15 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EventPass - Venda de Ingressos</title>
     <link rel="stylesheet" href="static/styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   </head>
   <body>
     <!-- NAVBAR -->
     <nav class="navbar">
       <div class="nav-container">
-        <div class="logo">🎫 EventPass</div>
+        <div class="logo" id="logo-home" style="cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">🎫 EventPass</div>
         <div class="nav-right">
           <div id="user-info" class="user-info" style="display: none">
             <span id="username-display"></span>
+            <button id="user-dashboard-btn" class="btn btn-secondary">
+              📊 Meu Dashboard
+            </button>
             <button id="my-tickets-btn" class="btn btn-secondary">
               Meus Ingressos
             </button>
@@ -152,6 +156,58 @@
         </div>
       </section>
 
+      <!-- TELA DE DASHBOARD USUÁRIO -->
+      <section id="dashboard-user-screen" class="screen">
+        <div class="screen-header">
+          <button class="btn-back" id="back-from-user-dashboard">← Voltar</button>
+          <h1>Meu Dashboard</h1>
+        </div>
+        <div class="dashboard-container">
+          <div class="dashboard-cards">
+            <div class="card">
+              <h3>Total de Eventos</h3>
+              <p id="user-total-eventos">0</p>
+            </div>
+            <div class="card">
+              <h3>Total de Ingressos</h3>
+              <p id="user-total-ingressos">0</p>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Eventos por mês</h3>
+            <div id="user-eventos-mes"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TELA DE DASHBOARD ADMIN -->
+      <section id="dashboard-admin-screen" class="screen">
+        <div class="screen-header">
+          <button class="btn-back" onclick="showScreen('admin-screen')">← Voltar</button>
+          <h1>Dashboard Admin</h1>
+        </div>
+        <div class="dashboard-container">
+          <div class="dashboard-cards">
+            <div class="card">
+              <h3>Total Vendido</h3>
+              <p id="admin-total-vendas">0</p>
+            </div>
+            <div class="card">
+              <h3>Receita Total</h3>
+              <p id="admin-receita">0</p>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Performance por Evento</h3>
+            <div id="admin-eventos-list"></div>
+          </div>
+          <div class="card">
+            <h3>Vendas Recentes</h3>
+            <div id="admin-recent-sales-list"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- TELA DE LOGIN -->
       <section id="login-screen" class="screen">
         <div class="auth-container">
@@ -225,6 +281,9 @@
             </button>
             <button class="admin-tab" data-tab="manage">
               Gerenciar Eventos
+            </button>
+            <button class="admin-tab" id="admin-dashboard-tab-btn">
+              📊 Ver Estatísticas
             </button>
           </div>
 

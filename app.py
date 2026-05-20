@@ -549,5 +549,81 @@ def seed_eventos():
 
     return jsonify({"mensagem": "Eventos inseridos com sucesso"}), 201
 
+@app.route("/dashboard/usuario/<int:usuario_id>", methods=["GET"])
+def dashboard_usuario(usuario_id):
+    usuario = Usuario.query.get(usuario_id)
+
+    if not usuario:
+        return jsonify({"mensagem": "Usuário não encontrado"}), 404
+
+    compras = IngressoComprado.query.filter_by(usuario_id=usuario_id).all()
+
+    total_eventos = len(set([c.evento_id for c in compras]))
+    total_ingressos = sum([c.quantidade for c in compras])
+
+    eventos_por_mes = {}
+    for c in compras:
+        mes = c.data_compra.strftime("%m/%Y")
+        eventos_por_mes[mes] = eventos_por_mes.get(mes, 0) + c.quantidade
+
+    return jsonify({
+        "total_eventos": total_eventos,
+        "total_ingressos": total_ingressos,
+        "eventos_por_mes": eventos_por_mes
+    })
+
+
+@app.route("/dashboard/admin", methods=["GET"])
+def dashboard_admin():
+    # Proteção: Verifica se o ID do usuário foi enviado e se ele é admin
+    user_id = request.args.get("user_id")
+    if not user_id:
+        return jsonify({"mensagem": "Usuário não autenticado"}), 401
+    
+    usuario = Usuario.query.get(user_id)
+    if not usuario or not usuario.is_admin:
+        return jsonify({"mensagem": "Acesso restrito a administradores"}), 403
+
+    # Se for admin, continua com a lógica original
+    eventos = Evento.query.all()
+    vendas_todas = IngressoComprado.query.order_by(IngressoComprado.data_compra.desc()).all()
+
+    dados_eventos = []
+    total_vendas = 0
+    receita_total = 0
+
+    for evento in eventos:
+        vendas_evento = [v for v in vendas_todas if v.evento_id == evento.id]
+        total_ingressos = sum([v.quantidade for v in vendas_evento])
+        receita = sum([v.preco_total for v in vendas_evento])
+
+        total_vendas += total_ingressos
+        receita_total += receita
+
+        dados_eventos.append({
+            "evento": evento.titulo,
+            "ingressos": total_ingressos,
+            "receita": receita
+        })
+
+    # Lista de vendas detalhadas para o Admin ver "quem comprou o quê"
+    vendas_recentes = []
+    for v in vendas_todas[:10]: # Pegar as últimas 10 vendas
+        vendas_recentes.append({
+            "usuario": v.usuario.nome,
+            "evento": v.evento.titulo,
+            "tipo": v.tipo_ingresso.nome,
+            "quantidade": v.quantidade,
+            "valor": v.preco_total,
+            "data": v.data_compra.strftime("%d/%m %H:%M")
+        })
+
+    return jsonify({
+        "total_vendas": total_vendas,
+        "receita_total": receita_total,
+        "eventos": dados_eventos,
+        "vendas_recentes": vendas_recentes
+    })
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True)

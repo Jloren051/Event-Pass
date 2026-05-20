@@ -46,6 +46,7 @@ function updateNavbar() {
   const authButtons = document.getElementById("auth-buttons");
   const adminBtn = document.getElementById("admin-btn");
   const myTicketsBtn = document.getElementById("my-tickets-btn");
+  const userDashboardBtn = document.getElementById("user-dashboard-btn");
 
   if (currentUser) {
     userInfo.style.display = "flex";
@@ -53,11 +54,13 @@ function updateNavbar() {
     document.getElementById("username-display").textContent = currentUser.nome;
     adminBtn.style.display = currentUser.is_admin ? "block" : "none";
     myTicketsBtn.style.display = "block";
+    userDashboardBtn.style.display = "block";
   } else {
     userInfo.style.display = "none";
     authButtons.style.display = "flex";
     adminBtn.style.display = "none";
     myTicketsBtn.style.display = "none";
+    userDashboardBtn.style.display = "none";
   }
 }
 
@@ -260,51 +263,106 @@ function removerDoCarrinho(index) {
 
 // ==================== PAGAMENTO ====================
 
+function crc16(data) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x8000) !== 0) {
+        crc = (crc << 1) ^ 0x1021;
+      } else {
+        crc = crc << 1;
+      }
+    }
+  }
+  return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+}
+
+function formatPixField(id, value) {
+  const len = value.length.toString().padStart(2, '0');
+  return `${id}${len}${value}`;
+}
+
+function gerarPayloadPix(chave, nome, cidade, valorTotal) {
+  const valor = valorTotal > 0 ? valorTotal.toFixed(2) : "0.01";
+  let payload = '000201';
+  const gui = formatPixField('00', 'br.gov.bcb.pix');
+  const key = formatPixField('01', chave);
+  payload += formatPixField('26', gui + key);
+  payload += formatPixField('52', '0000');
+  payload += formatPixField('53', '0986');
+  payload += formatPixField('54', valor);
+  payload += formatPixField('58', 'BR');
+  payload += formatPixField('59', nome);
+  payload += formatPixField('60', cidade);
+  payload += formatPixField('62', formatPixField('05', '***'));
+  payload += '6304';
+  payload += crc16(payload);
+  return payload;
+}
+
 async function gerarQrCodePix(valorTotal) {
   const pixContainer = document.getElementById("pix-qrcode-container");
   const pixText = document.getElementById("pix-copia-e-cola");
   const copyBtn = document.getElementById("copy-pix-btn");
 
-  pixContainer.innerHTML = "<p>Gerando QR Code...</p>";
+  pixContainer.innerHTML = "";
   pixText.value = "Aguarde...";
   copyBtn.onclick = null;
 
   try {
     const chave = "53270726813"; // CPF do usuário
-    // Usa o valor total, ou 0.01 como fallback para evitar erros com valor zero.
-    const valor = valorTotal > 0 ? valorTotal.toFixed(2) : "0.01";
-    const nome = "ERICK XAVIER"; // Nome do recebedor (em maiúsculas, como é boa prática)
+    const nome = "ERICK XAVIER"; // Nome do recebedor
     const cidade = "SAO PAULO"; // Cidade do recebedor
-    // O txid (ID da transação) para esta API de teste precisa ser mais simples.
-    // As tentativas anteriores seguiam o padrão oficial do PIX, mas a API
-    // de teste parece esperar um ID mais curto e numérico.
-    const txid = Date.now().toString().slice(-10); // Gera um ID numérico de 10 dígitos
 
-    const url = `https://prof.utfpr.edu.br/ricardo/api/pix/qrcode.php?chave=${chave}&valor=${valor}&nome=${nome}&cidade=${cidade}&id=${txid}`;
+    const payload = gerarPayloadPix(chave, nome, cidade, valorTotal);
+    
+    // Gera o QRCode usando a biblioteca qrcode.js
+    new QRCode(pixContainer, {
+        text: payload,
+        width: 200,
+        height: 200,
+        colorDark : "#000000",
+        colorLight : "#ffffff",
+        correctLevel : QRCode.CorrectLevel.M
+    });
 
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`A API de QR Code retornou o status ${res.status}`);
-    }
+    pixText.value = payload;
 
-    const data = await res.json();
+    copyBtn.onclick = () => {
+      const textToCopy = pixText.value;
+      if (!textToCopy || textToCopy === "Aguarde..." || textToCopy === "Erro na geração do código.") return;
 
-    if (data.qrcode) {
-      pixContainer.innerHTML = `<img src="${data.qrcode}" alt="PIX QR Code" style="max-width: 200px; border: 1px solid var(--border-color);">`;
-      pixText.value = data.payload;
-
-      copyBtn.onclick = () => {
-        navigator.clipboard.writeText(pixText.value).then(
+      // Tenta usar o método moderno
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(textToCopy).then(
           () => {
-            alert("Código PIX copiado para a área de transferência!");
+            alert("✅ Código copiado! Confirmando pagamento...");
+            confirmarPagamento(); // Processa a compra automaticamente
           },
           () => {
-            alert("Falha ao copiar o código. Tente manualmente.");
+            fallbackCopyTextToClipboard(textToCopy);
           },
         );
-      };
-    } else {
-      throw new Error("A resposta da API não continha um QR Code.");
+      } else {
+        // Usa o método antigo (fallback) se o moderno não estiver disponível
+        fallbackCopyTextToClipboard(textToCopy);
+      }
+    };
+
+    function fallbackCopyTextToClipboard(text) {
+      pixText.select();
+      try {
+        const successful = document.execCommand("copy");
+        if (successful) {
+          alert("✅ Código copiado! Confirmando pagamento...");
+          confirmarPagamento(); // Processa a compra automaticamente
+        } else {
+          alert("Falha ao copiar. Selecione o texto e copie manualmente.");
+        }
+      } catch (err) {
+        alert("Erro ao copiar. Tente manualmente.");
+      }
     }
   } catch (err) {
     console.error("Erro ao gerar PIX QR Code:", err);
@@ -425,6 +483,79 @@ async function renderMeusIngressos() {
     container.innerHTML = `<p style="color: var(--error-color);">${err.message}</p>`;
   }
 }
+
+// ==================== DASHBOARD ====================
+
+async function carregarDashboardUsuario() {
+  if (!currentUser) return;
+
+  try {
+    const res = await fetch(`/dashboard/usuario/${currentUser.id}`);
+    const data = await res.json();
+
+    document.getElementById("user-total-eventos").textContent = data.total_eventos;
+    document.getElementById("user-total-ingressos").textContent = data.total_ingressos;
+
+    const container = document.getElementById("user-eventos-mes");
+    container.innerHTML = Object.entries(data.eventos_por_mes)
+      .map(([mes, qtd]) => `<p>📅 ${mes}: <strong>${qtd}</strong> ingressos</p>`)
+      .join("");
+
+    showScreen("dashboard-user-screen");
+  } catch (err) {
+    console.error("Erro ao carregar dashboard:", err);
+  }
+}
+
+async function carregarDashboardAdmin() {
+  if (!currentUser || !currentUser.is_admin) return;
+
+  try {
+    // Enviamos o ID do usuário logado para o backend validar
+    const res = await fetch(`/dashboard/admin?user_id=${currentUser.id}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.mensagem || "Acesso negado");
+      return;
+    }
+
+    document.getElementById("admin-total-vendas").textContent = data.total_vendas;
+    document.getElementById("admin-receita").textContent = "R$ " + data.receita_total.toFixed(2);
+
+    // Renderizar Performance por Evento
+    const eventosContainer = document.getElementById("admin-eventos-list");
+    eventosContainer.innerHTML = data.eventos
+      .map((e) => `
+        <div class="admin-dashboard-item" style="border-bottom: 1px solid var(--border-color); padding: 0.8rem 0;">
+          <p><strong>${e.evento}</strong></p>
+          <p style="font-size: 0.85rem; color: var(--text-color);">🎟️ ${e.ingressos} ingressos | 💰 R$ ${e.receita.toFixed(2)}</p>
+        </div>`)
+      .join("");
+
+    // Renderizar Vendas Recentes
+    const salesContainer = document.getElementById("admin-recent-sales-list");
+    if (data.vendas_recentes && data.vendas_recentes.length > 0) {
+      salesContainer.innerHTML = data.vendas_recentes
+        .map((v) => `
+          <div class="admin-dashboard-item" style="border-bottom: 1px solid var(--border-color); padding: 0.8rem 0;">
+            <p><strong>👤 ${v.usuario}</strong></p>
+            <p style="font-size: 0.85rem; color: var(--text-color);">
+              ${v.quantidade}x ${v.tipo} - ${v.evento}<br>
+              <span style="color: var(--success-color); font-weight: bold;">R$ ${v.valor.toFixed(2)}</span> | 🕒 ${v.data}
+            </p>
+          </div>`)
+        .join("");
+    } else {
+      salesContainer.innerHTML = "<p>Nenhuma venda recente.</p>";
+    }
+
+    showScreen("dashboard-admin-screen");
+  } catch (err) {
+    console.error("Erro ao carregar dashboard admin:", err);
+  }
+}
+
 // ==================== AUTENTICAÇÃO ====================
 
 async function cadastrarUsuario(nome, email, senha, confirmarSenha) {
@@ -821,11 +952,20 @@ document.addEventListener("DOMContentLoaded", () => {
     showScreen("purchased-screen");
   });
 
+  // DASHBOARD USUÁRIO
+  document.getElementById("user-dashboard-btn").addEventListener("click", carregarDashboardUsuario);
+  document.getElementById("back-from-user-dashboard").addEventListener("click", () => showScreen("events-screen"));
+
+
   document
     .getElementById("confirm-payment-btn")
     .addEventListener("click", confirmarPagamento);
 
   // NAVEGAÇÃO
+  document.getElementById("logo-home").addEventListener("click", () => {
+    showScreen("events-screen");
+  });
+
   document
     .getElementById("login-link")
     .addEventListener("click", () => showScreen("login-screen"));
@@ -851,6 +991,8 @@ document.addEventListener("DOMContentLoaded", () => {
     showScreen("admin-screen");
     renderAdminEventsList();
   });
+
+  document.getElementById("admin-dashboard-tab-btn").addEventListener("click", carregarDashboardAdmin);
 
   document.getElementById("back-from-admin").addEventListener("click", () => {
     showScreen("events-screen");
