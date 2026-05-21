@@ -1,4 +1,4 @@
-<!doctype html>
+r<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
@@ -47,7 +47,42 @@
       <section id="events-screen" class="screen active">
         <div class="events-container">
           <h1>Próximos Eventos</h1>
+          <!-- FILTROS -->
+          <div class="filters-container">
+            <div class="filter-group">
+              <label for="search-filter">Buscar por Nome</label>
+              <input type="text" id="search-filter" placeholder="Nome do evento...">
+            </div>
+            <div class="filter-group">
+              <label for="price-filter">Preço até R$ <span id="price-value">300</span></label>
+              <input type="range" id="price-filter" min="0" max="300" value="300" step="10">
+            </div>
+            <div class="filter-group">
+              <label for="category-filter">Tipo de Evento</label>
+              <select id="category-filter">
+                <option value="todos">Todos</option>
+                <option value="Show">Show</option>
+                <option value="Festa">Festa</option>
+                <option value="Festival">Festival</option>
+                <option value="Teatro">Teatro</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="genre-filter">Gênero Musical</label>
+              <select id="genre-filter">
+                <option value="todos">Todos</option>
+                <option value="Rock">Rock</option>
+                <option value="Pop">Pop</option>
+                <option value="Eletrônica">Eletrônica</option>
+                <option value="Sertanejo">Sertanejo</option>
+                <option value="Variado">Variado</option>
+              </select>
+            </div>
+            <button id="reset-filters-btn" class="btn btn-secondary">Limpar Filtros</button>
+          </div>
           <div id="events-grid" class="events-grid"></div>
+          <div id="no-events-found" style="display: none; text-align: center; padding: 3rem; color: var(--border-color);"><p>Nenhum evento encontrado com os filtros selecionados.</p></div>
         </div>
       </section>
 
@@ -296,6 +331,7 @@
                 <input
                   type="text"
                   id="event-title"
+                  name="titulo"
                   placeholder="Ex: Festival de Rock"
                   required
                 />
@@ -305,6 +341,7 @@
                 <input
                   type="text"
                   id="event-date"
+                  name="data"
                   placeholder="DD/MM/YYYY"
                   maxlength="10"
                   required
@@ -315,6 +352,7 @@
                 <input
                   type="text"
                   id="event-location"
+                  name="local"
                   placeholder="Ex: São Paulo"
                   required
                 />
@@ -324,6 +362,7 @@
                 <input
                   type="number"
                   id="event-price"
+                  name="preco"
                   placeholder="0.00"
                   step="0.01"
                   min="0"
@@ -331,14 +370,24 @@
                 />
               </div>
               <div class="form-group">
-                <label>Emoji do Evento</label>
-                <input
-                  type="text"
-                  id="event-emoji"
-                  placeholder="🎵"
-                  maxlength="2"
-                  required
-                />
+                <label>Imagem do Evento</label>
+                <input type="file" id="event-image" name="imagem" accept="image/*" />
+              </div>
+              <div class="form-group">
+                <label>Gênero Musical</label>
+                <select id="event-genre" name="genero_musical">
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Categoria do Evento</label>
+                <select id="event-category" name="categoria" required>
+                    <option value="" disabled selected>Selecione uma categoria</option>
+                    <option value="Show">Show</option>
+                    <option value="Festa">Festa</option>
+                    <option value="Festival">Festival</option>
+                    <option value="Teatro">Teatro</option>
+                    <option value="Outro">Outro</option>
+                </select>
               </div>
 
               <!-- TIPOS DE INGRESSO -->
@@ -415,13 +464,14 @@
             <input type="hidden" id="edit-event-id" />
             <div class="form-group">
               <label>Título do Evento</label>
-              <input type="text" id="edit-event-title" required />
+              <input type="text" id="edit-event-title" name="titulo" required />
             </div>
             <div class="form-group">
               <label>Data do Evento</label>
               <input
                 type="text"
                 id="edit-event-date"
+                name="data"
                 placeholder="DD/MM/YYYY"
                 maxlength="10"
                 required
@@ -429,21 +479,40 @@
             </div>
             <div class="form-group">
               <label>Local do Evento</label>
-              <input type="text" id="edit-event-location" required />
+              <input type="text" id="edit-event-location" name="local" required />
             </div>
             <div class="form-group">
               <label>Preço Base do Ingresso (R$)</label>
               <input
                 type="number"
                 id="edit-event-price"
+                name="preco"
                 step="0.01"
                 min="0"
                 required
               />
             </div>
             <div class="form-group">
-              <label>Emoji do Evento</label>
-              <input type="text" id="edit-event-emoji" maxlength="2" required />
+              <label>Nova Imagem do Evento (opcional)</label>
+              <div id="edit-image-preview" class="image-preview"></div>
+              <input type="file" id="edit-event-image" name="imagem" accept="image/*" />
+            </div>
+            <div class="form-group">
+              <label>Gênero Musical</label>
+              <select id="edit-event-genre" name="genero_musical">
+                  <!-- Options will be populated by JS -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Categoria do Evento</label>
+              <select id="edit-event-category" name="categoria" required>
+                  <option value="" disabled selected>Selecione uma categoria</option>
+                  <option value="Show">Show</option>
+                  <option value="Festa">Festa</option>
+                  <option value="Festival">Festival</option>
+                  <option value="Teatro">Teatro</option>
+                  <option value="Outro">Outro</option>
+              </select>
             </div>
 
             <!-- TIPOS DE INGRESSO -->

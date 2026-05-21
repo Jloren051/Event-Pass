@@ -231,11 +231,14 @@ body {
 }
 
 .event-image {
-  background-color: var(--bg-color);
-  padding: 2rem;
-  text-align: center;
-  font-size: 3rem;
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
   border-bottom: 1px solid var(--border-color);
+  background-color: var(--border-color); /* Cor de fundo para imagens quebradas */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .event-content {
@@ -437,6 +440,44 @@ body {
   font-size: 1.1rem;
 }
 
+/* ==================== FILTERS ==================== */
+
+.filters-container {
+  background-color: var(--card-bg);
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 2rem;
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filter-group label {
+  font-size: 0.9rem;
+  color: var(--border-color);
+}
+
+.filter-group input[type="range"] {
+  width: 200px;
+  cursor: pointer;
+}
+
+.filter-group input[type="text"] {
+  padding: 0.6rem 0.8rem;
+  width: 220px;
+}
+
+.filter-group select {
+  padding: 0.6rem 0.8rem;
+}
 /* ==================== MEUS INGRESSOS (PURCHASED TICKETS) ====================  */
 .purchased-tickets {
   display: grid;
@@ -629,7 +670,8 @@ body {
 
 .form-group input,
 .form-group textarea,
-.form-group select {
+.form-group select,
+.filter-group select {
   width: 100%;
   padding: 0.75rem;
   background-color: var(--bg-color);
@@ -643,11 +685,24 @@ body {
 
 .form-group input:focus,
 .form-group textarea:focus,
-.form-group select:focus {
+.form-group select:focus,
+.filter-group select:focus {
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
+
+.image-preview {
+  margin-bottom: 1rem;
+}
+
+.image-preview img {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
 
 /* ==================== AUTH ====================  */
 

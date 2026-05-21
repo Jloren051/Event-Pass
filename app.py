@@ -3,10 +3,13 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from datetime import datetime
+from werkzeug.utils import secure_filename
+from functools import wraps
 import bcrypt
 import uuid
 import os
-
+import json
+ 
 load_dotenv()
 
 
@@ -22,6 +25,11 @@ CORS(app)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DB_URI")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["UPLOAD_FOLDER"] = os.path.join(app.static_folder, 'uploads')
+
+# Garante que a pasta de uploads exista
+if not os.path.exists(app.config["UPLOAD_FOLDER"]):
+    os.makedirs(app.config["UPLOAD_FOLDER"])
 
 db = SQLAlchemy(app)
 
@@ -43,9 +51,11 @@ class Evento(db.Model):
     titulo = db.Column(db.String(150), nullable=False)
     data = db.Column(db.String(50), nullable=False)
     local = db.Column(db.String(100), nullable=False)
-    imagem = db.Column(db.String(255))
+    imagem_url = db.Column(db.String(255), nullable=True)
     preco = db.Column(db.Float, nullable=False)
     tipos_ingresso = db.relationship("TipoIngresso", backref="evento", lazy=True, cascade="all, delete-orphan")
+    categoria = db.Column(db.String(50), nullable=True)
+    genero_musical = db.Column(db.String(50), nullable=True)
 
 
 class TipoIngresso(db.Model):
@@ -78,6 +88,26 @@ class IngressoComprado(db.Model):
 
 with app.app_context():
     db.create_all()
+
+    # Criar usuário admin padrão se não existir
+    if not Usuario.query.filter_by(is_admin=True).first():
+        print("\n⚠️  Nenhum administrador encontrado. Criando admin padrão...")
+
+        admin_email = "admin@eventpass.com"
+        admin_senha = "adminpassword"
+        
+        # Verifica se o usuário já existe para apenas promovê-lo
+        usuario_existente = Usuario.query.filter_by(email=admin_email).first()
+        if usuario_existente:
+            usuario_existente.is_admin = True
+        else:
+            senha_hash = bcrypt.hashpw(admin_senha.encode("utf-8"), bcrypt.gensalt())
+            admin = Usuario(nome="Admin", email=admin_email, senha=senha_hash, is_admin=True)
+            db.session.add(admin)
+        
+        db.session.commit()
+        print(f"✅ Administrador criado com sucesso! Use estas credenciais para login:")
+        print(f"   Email: {admin_email} | Senha: {admin_senha}\n")
     
     # Criar eventos padrão se não existirem
     if not Evento.query.first():
@@ -88,9 +118,11 @@ with app.app_context():
                 "titulo": "Festa Eletrônica 2026",
                 "data": "15/04/2026",
                 "local": "São Paulo",
-                "imagem": "🎵",
+                "imagem_url": "/static/uploads/placeholder_festa.jpg",
                 "preco": 80,
-                "tipos": [
+                "categoria": "Festa",
+                "genero_musical": "Eletrônica",
+                "tipos": [ 
                     {"nome": "Inteira", "descricao": "Ingresso inteiro", "preco": 80, "quantidade": 100},
                     {"nome": "Meia Entrada", "descricao": "Meia entrada", "preco": 40, "quantidade": 50}
                 ]
@@ -99,9 +131,11 @@ with app.app_context():
                 "titulo": "Show de Rock",
                 "data": "20/05/2026",
                 "local": "Rio de Janeiro",
-                "imagem": "🎸",
+                "imagem_url": "/static/uploads/placeholder_show.jpg",
                 "preco": 100,
-                "tipos": [
+                "categoria": "Show",
+                "genero_musical": "Rock",
+                "tipos": [ 
                     {"nome": "Inteira", "descricao": "Ingresso inteiro", "preco": 100, "quantidade": 100},
                     {"nome": "Meia Entrada", "descricao": "Meia entrada", "preco": 50, "quantidade": 50},
                     {"nome": "Meia Idoso", "descricao": "60+ anos", "preco": 50, "quantidade": 30}
@@ -111,9 +145,11 @@ with app.app_context():
                 "titulo": "Festival de Música",
                 "data": "10/06/2026",
                 "local": "Belo Horizonte",
-                "imagem": "🎭",
+                "imagem_url": "/static/uploads/placeholder_festival.jpg",
                 "preco": 120,
-                "tipos": [
+                "categoria": "Festival",
+                "genero_musical": "Variado",
+                "tipos": [ 
                     {"nome": "Inteira", "descricao": "Ingresso inteiro", "preco": 120, "quantidade": 100},
                     {"nome": "Meia Entrada", "descricao": "Meia entrada", "preco": 60, "quantidade": 50},
                     {"nome": "Meia Social", "descricao": "Comprovante de baixa renda", "preco": 60, "quantidade": 40}
@@ -126,8 +162,10 @@ with app.app_context():
                 titulo=evento_data["titulo"],
                 data=evento_data["data"],
                 local=evento_data["local"],
-                imagem=evento_data["imagem"],
-                preco=evento_data["preco"]
+                imagem_url=evento_data["imagem_url"],
+                preco=evento_data["preco"],
+                categoria=evento_data["categoria"],
+                genero_musical=evento_data["genero_musical"]
             )
             db.session.add(evento)
             db.session.flush()
@@ -186,6 +224,39 @@ def cadastrar():
 
     return jsonify({"mensagem": "Usuário cadastrado com sucesso"}), 201
 
+
+# Decorator para proteger rotas de admin
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_id = None
+        
+        # Tenta obter user_id do corpo JSON, se houver
+        if request.is_json:
+            json_data = request.get_json(silent=True)
+            if json_data:
+                user_id = json_data.get("user_id")
+        elif request.form:
+            user_id = request.form.get('user_id')
+        
+        # Se não encontrou no JSON, tenta obter dos argumentos da URL
+        if not user_id:
+            user_id = request.args.get('user_id')
+
+        if not user_id:
+            return jsonify({"mensagem": "Autenticação necessária (ID de usuário ausente)."}), 401
+
+        try:
+            usuario = Usuario.query.get(int(user_id))
+        except (ValueError, TypeError):
+            return jsonify({"mensagem": "ID de usuário inválido."}), 400
+
+        if not usuario or not usuario.is_admin:
+            return jsonify({"mensagem": "Acesso negado. Requer permissão de administrador."}), 403
+            
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route("/login", methods=["POST"])
 def login():
     dados = request.get_json()
@@ -219,7 +290,27 @@ def login():
 @app.route("/eventos", methods=["GET"])
 def listar_eventos():
     try:
-        eventos = Evento.query.all()
+        query = Evento.query
+
+        # Filtros
+        preco_max = request.args.get('preco_max', type=float)
+        categoria = request.args.get('categoria', type=str)
+        genero = request.args.get('genero', type=str)
+        titulo = request.args.get('titulo', type=str)
+
+        if preco_max is not None and preco_max < 300:
+            query = query.filter(Evento.preco <= preco_max)
+        
+        if categoria and categoria != 'todos':
+            query = query.filter(Evento.categoria == categoria)
+        
+        if genero and genero != 'todos':
+            query = query.filter(Evento.genero_musical == genero)
+
+        if titulo:
+            query = query.filter(Evento.titulo.ilike(f'%{titulo}%'))
+
+        eventos = query.order_by(Evento.data).all()
 
         lista = []
         for e in eventos:
@@ -228,7 +319,7 @@ def listar_eventos():
                 "titulo": e.titulo,
                 "data": e.data,
                 "local": e.local,
-                "emoji": e.imagem,
+                "imagem_url": e.imagem_url,
                 "preco": e.preco
             })
 
@@ -259,29 +350,42 @@ def obter_evento(evento_id):
         "titulo": evento.titulo,
         "data": evento.data,
         "local": evento.local,
-        "emoji": evento.imagem,
+        "imagem_url": evento.imagem_url,
         "preco": evento.preco,
+        "categoria": evento.categoria,
+        "genero_musical": evento.genero_musical,
         "tipos_ingresso": tipos_ingresso
     }), 200
 
 @app.route("/criar-evento", methods=["POST"])
+@admin_required
 def criar_evento():
-    dados = request.get_json()
-
-    titulo = dados.get("titulo", "").strip()
-    data = dados.get("data", "").strip()
-    local = dados.get("local", "").strip()
-    emoji = dados.get("emoji", "🎉")
-    tipos_ingresso = dados.get("tipos_ingresso", [])
+    # O decorator `admin_required` já validou o acesso
+    titulo = request.form.get("titulo", "").strip()
+    data = request.form.get("data", "").strip()
+    local = request.form.get("local", "").strip()
+    categoria = request.form.get("categoria", "Outro")
+    genero_musical = request.form.get("genero_musical", "N/A")
+    tipos_ingresso_json = request.form.get("tipos_ingresso", "[]")
+    tipos_ingresso = json.loads(tipos_ingresso_json)
     
     # ✅ CONVERTER PARA FLOAT COM VALIDAÇÃO
     try:
-        preco = float(dados.get("preco", 0))
+        preco = float(request.form.get("preco", 0))
     except (ValueError, TypeError):
         return jsonify({"mensagem": "Preço inválido"}), 400
 
     if not titulo or not data or not local or preco <= 0:
         return jsonify({"mensagem": "Preencha todos os campos corretamente"}), 400
+
+    imagem_url = None
+    if 'imagem' in request.files:
+        file = request.files['imagem']
+        if file and file.filename != '':
+            filename = secure_filename(file.filename)
+            unique_filename = f"{uuid.uuid4()}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+            imagem_url = f"/static/uploads/{unique_filename}"
 
     # Validar formato de data (DD/MM/YYYY)
     try:
@@ -293,8 +397,10 @@ def criar_evento():
         titulo=titulo,
         data=data,
         local=local,
-        imagem=emoji,
-        preco=float(preco)
+        imagem_url=imagem_url,
+        preco=float(preco),
+        categoria=categoria,
+        genero_musical=genero_musical
     )
 
     db.session.add(novo_evento)
@@ -321,28 +427,31 @@ def criar_evento():
             "titulo": novo_evento.titulo,
             "data": novo_evento.data,
             "local": novo_evento.local,
-            "emoji": novo_evento.imagem,
+            "imagem_url": novo_evento.imagem_url,
             "preco": novo_evento.preco
         }
     }), 201
 
 @app.route("/editar-evento/<int:evento_id>", methods=["PUT"])
+@admin_required
 def editar_evento(evento_id):
-    dados = request.get_json()
+    # O decorator `admin_required` já validou o acesso
     evento = Evento.query.get(evento_id)
 
     if not evento:
         return jsonify({"mensagem": "Evento não encontrado"}), 404
 
-    titulo = dados.get("titulo", "").strip()
-    data = dados.get("data", "").strip()
-    local = dados.get("local", "").strip()
-    emoji = dados.get("emoji", "🎉")
-    tipos_ingresso = dados.get("tipos_ingresso", [])
+    titulo = request.form.get("titulo", "").strip()
+    data = request.form.get("data", "").strip()
+    local = request.form.get("local", "").strip()
+    categoria = request.form.get("categoria", "Outro")
+    genero_musical = request.form.get("genero_musical", "N/A")
+    tipos_ingresso_json = request.form.get("tipos_ingresso", "[]")
+    tipos_ingresso = json.loads(tipos_ingresso_json)
     
     # ✅ CONVERTER PARA FLOAT COM VALIDAÇÃO
     try:
-        preco = float(dados.get("preco", 0))
+        preco = float(request.form.get("preco", 0))
     except (ValueError, TypeError):
         return jsonify({"mensagem": "Preço inválido"}), 400
 
@@ -355,11 +464,21 @@ def editar_evento(evento_id):
     except ValueError:
         return jsonify({"mensagem": "Data inválida. Use o formato DD/MM/YYYY"}), 400
 
+    if 'imagem' in request.files:
+        file = request.files['imagem']
+        if file and file.filename != '':
+            # Opcional: deletar a imagem antiga do sistema de arquivos
+            filename = secure_filename(file.filename)
+            unique_filename = f"{uuid.uuid4()}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+            evento.imagem_url = f"/static/uploads/{unique_filename}"
+
     evento.titulo = titulo
     evento.data = data
     evento.local = local
-    evento.imagem = emoji
     evento.preco = float(preco)
+    evento.categoria = categoria
+    evento.genero_musical = genero_musical
 
     # Deletar tipos de ingresso antigos
     TipoIngresso.query.filter_by(evento_id=evento_id).delete()
@@ -385,13 +504,15 @@ def editar_evento(evento_id):
             "titulo": evento.titulo,
             "data": evento.data,
             "local": evento.local,
-            "emoji": evento.imagem,
+            "imagem_url": evento.imagem_url,
             "preco": evento.preco
         }
     }), 200
 
 @app.route("/deletar-evento/<int:evento_id>", methods=["DELETE"])
+@admin_required
 def deletar_evento(evento_id):
+    # O decorator `admin_required` já validou o acesso
     evento = Evento.query.get(evento_id)
 
     if not evento:
@@ -471,7 +592,7 @@ def meus_ingressos(usuario_id):
             "preco_total": compra.preco_total,
             "evento": {
                 "titulo": compra.evento.titulo, "data": compra.evento.data, "local": compra.evento.local,
-                "emoji": compra.evento.imagem, "status": status
+                "imagem_url": compra.evento.imagem_url, "status": status
             },
             "tipo_ingresso": {"nome": compra.tipo_ingresso.nome}
         })
@@ -490,8 +611,10 @@ def seed_eventos():
             "titulo": "Festival de Rock",
             "data": "20/04/2026",
             "local": "São Paulo",
-            "emoji": "🎸",
+            "imagem_url": None,
             "preco": 80,
+            "categoria": "Show",
+            "genero_musical": "Rock",
             "tipos": [
                 {"nome": "Inteira", "descricao": "Ingresso inteiro", "preco": 100, "quantidade": 100},
                 {"nome": "Meia Entrada", "descricao": "Meia entrada", "preco": 50, "quantidade": 50},
@@ -502,8 +625,10 @@ def seed_eventos():
             "titulo": "Show Pop Night",
             "data": "10/05/2026",
             "local": "Rio de Janeiro",
-            "emoji": "🎤",
+            "imagem_url": None,
             "preco": 120,
+            "categoria": "Festa",
+            "genero_musical": "Pop",
             "tipos": [
                 {"nome": "Inteira", "descricao": "Ingresso inteiro", "preco": 150, "quantidade": 150},
                 {"nome": "Meia Entrada", "descricao": "Meia entrada", "preco": 75, "quantidade": 100},
@@ -515,8 +640,10 @@ def seed_eventos():
             "titulo": "Noite Eletrônica",
             "data": "15/06/2026",
             "local": "Belo Horizonte",
-            "emoji": "🎵",
+            "imagem_url": None,
             "preco": 90,
+            "categoria": "Festival",
+            "genero_musical": "Eletrônica",
             "tipos": [
                 {"nome": "Inteira", "descricao": "Ingresso inteiro", "preco": 120, "quantidade": 200},
                 {"nome": "Meia Entrada", "descricao": "Meia entrada", "preco": 60, "quantidade": 150},
@@ -530,8 +657,10 @@ def seed_eventos():
             titulo=evento_data["titulo"],
             data=evento_data["data"],
             local=evento_data["local"],
-            imagem=evento_data["emoji"],
-            preco=evento_data["preco"]
+            imagem_url=evento_data["imagem_url"],
+            preco=evento_data["preco"],
+            categoria=evento_data["categoria"],
+            genero_musical=evento_data["genero_musical"]
         )
         db.session.add(evento)
         db.session.flush()

@@ -1,6 +1,16 @@
 let currentUser = null;
 let eventos = [];
 let eventoSelecionado = null;
+const generosMusicais = [
+  "Rock",
+  "Pop",
+  "Eletrônica",
+  "Sertanejo",
+  "Funk",
+  "Pagode",
+  "Variado",
+  "N/A",
+];
 
 const eventosPadrao = [
   {
@@ -8,7 +18,7 @@ const eventosPadrao = [
     titulo: "Festa Eletrônica 2026",
     data: "15/04/2026",
     local: "São Paulo",
-    emoji: "🎵",
+    imagem_url: null,
     preco: 80,
     tipos_ingresso: [],
   },
@@ -17,7 +27,7 @@ const eventosPadrao = [
     titulo: "Show de Rock",
     data: "20/05/2026",
     local: "Rio de Janeiro",
-    emoji: "🎸",
+    imagem_url: null,
     preco: 100,
     tipos_ingresso: [],
   },
@@ -26,7 +36,7 @@ const eventosPadrao = [
     titulo: "Festival de Música",
     data: "10/06/2026",
     local: "Belo Horizonte",
-    emoji: "🎭",
+    imagem_url: null,
     preco: 120,
     tipos_ingresso: [],
   },
@@ -67,24 +77,60 @@ function updateNavbar() {
 // ==================== EVENTOS ====================
 
 async function carregarEventos() {
+  const priceFilter = document.getElementById("price-filter");
+  const categoryFilter = document.getElementById("category-filter");
+  const genreFilter = document.getElementById("genre-filter");
+  const searchFilter = document.getElementById("search-filter");
+
+  const preco_max = priceFilter ? priceFilter.value : 300;
+  const categoria = categoryFilter ? categoryFilter.value : "todos";
+  const genero = genreFilter ? genreFilter.value : "todos";
+  const titulo = searchFilter ? searchFilter.value.trim() : "";
+
+  // Build query string
+  const params = new URLSearchParams();
+  if (preco_max < 300) {
+    params.append('preco_max', preco_max);
+  }
+  if (categoria !== 'todos') {
+    params.append('categoria', categoria);
+  }
+  if (genero !== 'todos') {
+    params.append('genero', genero);
+  }
+  if (titulo) {
+    params.append('titulo', titulo);
+  }
+  
+  const queryString = params.toString();
+  const url = `/eventos${queryString ? '?' + queryString : ''}`;
+
   try {
-    const res = await fetch("/eventos");
+    const res = await fetch(url);
     const data = await res.json();
-    eventos = res.ok && data.length > 0 ? data : eventosPadrao;
+    eventos = res.ok ? data : [];
   } catch {
-    eventos = eventosPadrao;
+    eventos = [];
   }
   renderEventos();
 }
 
 function renderEventos() {
   const container = document.getElementById("events-grid");
+  const noEventsMsg = document.getElementById("no-events-found");
 
+  if (eventos.length === 0) {
+      container.innerHTML = "";
+      if (noEventsMsg) noEventsMsg.style.display = "block";
+      return;
+  }
+
+  if (noEventsMsg) noEventsMsg.style.display = "none";
   container.innerHTML = eventos
     .map(
       (e) => `
         <div class="event-card" onclick="selecionarEvento(${e.id})">
-            <div class="event-image">${e.emoji || "🎉"}</div>
+            <img src="${e.imagem_url || '/static/uploads/placeholder_default.jpg'}" alt="${e.titulo}" class="event-image" onerror="this.onerror=null;this.src='/static/uploads/placeholder_default.jpg';"/>
             <div class="event-content">
                 <div class="event-title">${e.titulo}</div>
                 <div class="event-date">📅 ${e.data}</div>
@@ -640,19 +686,18 @@ function coletarTiposIngresso(containerId = "ticket-types-container") {
   return tipos;
 }
 
-async function criarEvento(titulo, data, local, preco, emoji, tipos_ingresso) {
+async function criarEvento(formData) {
+  if (!currentUser || !currentUser.is_admin) {
+    alert("Acesso negado. Apenas administradores podem criar eventos.");
+    return;
+  }
+
+  formData.append('user_id', currentUser.id);
+
   try {
     const res = await fetch("/criar-evento", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        titulo,
-        data,
-        local,
-        preco,
-        emoji,
-        tipos_ingresso,
-      }),
+      body: formData,
     });
 
     const data_res = await res.json();
@@ -660,15 +705,7 @@ async function criarEvento(titulo, data, local, preco, emoji, tipos_ingresso) {
 
     if (res.ok) {
       document.getElementById("create-event-form").reset();
-      document.getElementById("ticket-types-container").innerHTML = `
-                <div class="ticket-type-input">
-                    <input type="text" class="ticket-name" placeholder="Nome (ex: Inteira)">
-                    <input type="text" class="ticket-description" placeholder="Descrição">
-                    <input type="number" class="ticket-price" placeholder="Preço" step="0.01" min="0">
-                    <input type="number" class="ticket-quantity" placeholder="Quantidade" min="1" value="100">
-                    <button type="button" class="btn btn-error" onclick="removerTipoIngresso(this)">Remover</button>
-                </div>
-            `;
+      adicionarTipoIngresso("ticket-types-container", true); // Limpa e adiciona um novo
       await carregarEventos();
       renderAdminEventsList();
     }
@@ -691,7 +728,15 @@ async function carregarEventoParaEdicao(eventoId) {
       document.getElementById("edit-event-date").value = evento.data;
       document.getElementById("edit-event-location").value = evento.local;
       document.getElementById("edit-event-price").value = evento.preco;
-      document.getElementById("edit-event-emoji").value = evento.emoji;
+      document.getElementById("edit-event-category").value = evento.categoria;
+      document.getElementById("edit-event-genre").value = evento.genero_musical;
+
+      const previewContainer = document.getElementById("edit-image-preview");
+      if (evento.imagem_url) {
+        previewContainer.innerHTML = `<img src="${evento.imagem_url}" alt="Preview da imagem atual">`;
+      } else {
+        previewContainer.innerHTML = "<p>Nenhuma imagem cadastrada.</p>";
+      }
 
       // Popular tipos de ingresso
       const container = document.getElementById("edit-ticket-types-container");
@@ -717,27 +762,18 @@ async function carregarEventoParaEdicao(eventoId) {
   }
 }
 
-async function editarEvento(
-  eventoId,
-  titulo,
-  data,
-  local,
-  preco,
-  emoji,
-  tipos_ingresso,
-) {
+async function editarEvento(eventoId, formData) {
+  if (!currentUser || !currentUser.is_admin) {
+    alert("Acesso negado. Apenas administradores podem editar eventos.");
+    return;
+  }
+
+  formData.append('user_id', currentUser.id);
+
   try {
     const res = await fetch(`/editar-evento/${eventoId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        titulo,
-        data,
-        local,
-        preco,
-        emoji,
-        tipos_ingresso,
-      }),
+      body: formData,
     });
 
     const data_res = await res.json();
@@ -758,10 +794,15 @@ async function editarEvento(
 // ==================== ADMIN - DELETAR EVENTO ====================
 
 async function deletarEvento(eventoId) {
+  if (!currentUser || !currentUser.is_admin) {
+    alert("Acesso negado. Apenas administradores podem deletar eventos.");
+    return;
+  }
+
   if (!confirm("Tem certeza que deseja deletar este evento?")) return;
 
   try {
-    const res = await fetch(`/deletar-evento/${eventoId}`, {
+    const res = await fetch(`/deletar-evento/${eventoId}?user_id=${currentUser.id}`, {
       method: "DELETE",
     });
 
@@ -836,6 +877,20 @@ function setupAdminTabs() {
   });
 }
 
+function popularDropdownGeneros() {
+    const selects = [
+        document.getElementById("event-genre"),
+        document.getElementById("edit-event-genre")
+    ];
+    selects.forEach(select => {
+        if (!select) return;
+        select.innerHTML = generosMusicais
+            .map(g => `<option value="${g}">${g}</option>`)
+            .join('');
+    });
+}
+
+
 // ==================== INICIALIZAÇÃO ====================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -843,6 +898,7 @@ document.addEventListener("DOMContentLoaded", () => {
   updateNavbar();
   setupAdminTabs();
   atualizarContadorCarrinho();
+  popularDropdownGeneros();
 
   // SIGNUP
   const signupForm = document.getElementById("signup-form");
@@ -868,51 +924,60 @@ document.addEventListener("DOMContentLoaded", () => {
     await loginUsuario(email, senha);
   });
 
+  // FILTERS
+  const priceFilter = document.getElementById("price-filter");
+  const priceValue = document.getElementById("price-value");
+  const categoryFilter = document.getElementById("category-filter");
+  const genreFilter = document.getElementById("genre-filter");
+  const searchFilter = document.getElementById("search-filter");
+  const resetFiltersBtn = document.getElementById("reset-filters-btn");
+
+  if (priceFilter) priceFilter.addEventListener("input", () => { priceValue.textContent = priceFilter.value; });
+  if (priceFilter) priceFilter.addEventListener("change", () => carregarEventos());
+  if (categoryFilter) categoryFilter.addEventListener("change", () => carregarEventos());
+  if (genreFilter) genreFilter.addEventListener("change", () => carregarEventos());
+  if (searchFilter) searchFilter.addEventListener("input", () => carregarEventos());
+
+  if (resetFiltersBtn) resetFiltersBtn.addEventListener("click", () => {
+      priceFilter.value = 300;
+      priceValue.textContent = 300;
+      categoryFilter.value = "todos";
+      genreFilter.value = "todos";
+      if (searchFilter) searchFilter.value = "";
+      carregarEventos();
+  });
+
   // CRIAR EVENTO
   const createEventForm = document.getElementById("create-event-form");
   createEventForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const titulo = document.getElementById("event-title").value;
-    const data = document.getElementById("event-date").value;
-    const local = document.getElementById("event-location").value;
-    const preco = document.getElementById("event-price").value;
-    const emoji = document.getElementById("event-emoji").value;
+    const formData = new FormData(createEventForm);
     const tipos_ingresso = coletarTiposIngresso("ticket-types-container");
 
     if (tipos_ingresso.length === 0) {
       alert("Adicione pelo menos um tipo de ingresso");
       return;
     }
+    formData.append('tipos_ingresso', JSON.stringify(tipos_ingresso));
 
-    await criarEvento(titulo, data, local, preco, emoji, tipos_ingresso);
+    await criarEvento(formData);
   });
 
   // EDITAR EVENTO
   const editEventForm = document.getElementById("edit-event-form");
   editEventForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const formData = new FormData(editEventForm);
     const eventoId = document.getElementById("edit-event-id").value;
-    const titulo = document.getElementById("edit-event-title").value;
-    const data = document.getElementById("edit-event-date").value;
-    const local = document.getElementById("edit-event-location").value;
-    const preco = document.getElementById("edit-event-price").value;
-    const emoji = document.getElementById("edit-event-emoji").value;
     const tipos_ingresso = coletarTiposIngresso("edit-ticket-types-container");
 
     if (tipos_ingresso.length === 0) {
       alert("Adicione pelo menos um tipo de ingresso");
       return;
     }
+    formData.append('tipos_ingresso', JSON.stringify(tipos_ingresso));
 
-    await editarEvento(
-      eventoId,
-      titulo,
-      data,
-      local,
-      preco,
-      emoji,
-      tipos_ingresso,
-    );
+    await editarEvento(eventoId, formData);
   });
 
   // ADICIONAR TIPO DE INGRESSO
