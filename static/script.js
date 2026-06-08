@@ -1,6 +1,11 @@
 let currentUser = null;
 let eventos = [];
 let eventoSelecionado = null;
+
+// ATENÇÃO: Substitua pela sua Chave Pública do Mercado Pago
+const MERCADOPAGO_PUBLIC_KEY = "APP_USR-9c89627e-bae2-47b7-937a-01d70c143f24";
+const mp = new MercadoPago(MERCADOPAGO_PUBLIC_KEY);
+
 const generosMusicais = [
   "Rock",
   "Pop",
@@ -309,111 +314,66 @@ function removerDoCarrinho(index) {
 
 // ==================== PAGAMENTO ====================
 
-function crc16(data) {
-  let crc = 0xFFFF;
-  for (let i = 0; i < data.length; i++) {
-    crc ^= data.charCodeAt(i) << 8;
-    for (let j = 0; j < 8; j++) {
-      if ((crc & 0x8000) !== 0) {
-        crc = (crc << 1) ^ 0x1021;
-      } else {
-        crc = crc << 1;
-      }
-    }
-  }
-  return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-}
-
-function formatPixField(id, value) {
-  const len = value.length.toString().padStart(2, '0');
-  return `${id}${len}${value}`;
-}
-
-function gerarPayloadPix(chave, nome, cidade, valorTotal) {
-  const valor = valorTotal > 0 ? valorTotal.toFixed(2) : "0.01";
-  let payload = '000201';
-  const gui = formatPixField('00', 'br.gov.bcb.pix');
-  const key = formatPixField('01', chave);
-  payload += formatPixField('26', gui + key);
-  payload += formatPixField('52', '0000');
-  payload += formatPixField('53', '0986');
-  payload += formatPixField('54', valor);
-  payload += formatPixField('58', 'BR');
-  payload += formatPixField('59', nome);
-  payload += formatPixField('60', cidade);
-  payload += formatPixField('62', formatPixField('05', '***'));
-  payload += '6304';
-  payload += crc16(payload);
-  return payload;
-}
-
-async function gerarQrCodePix(valorTotal) {
+async function gerarQrCodeMercadoPago() {
   const pixContainer = document.getElementById("pix-qrcode-container");
   const pixText = document.getElementById("pix-copia-e-cola");
   const copyBtn = document.getElementById("copy-pix-btn");
+  const confirmBtn = document.getElementById("confirm-payment-btn");
+  const pixErrorEl = document.getElementById("payment-error"); // Usando o mesmo elemento de erro
 
-  pixContainer.innerHTML = "";
+  // Reseta o estado da UI
+  pixErrorEl.style.display = "none";
+  pixErrorEl.textContent = "";
+  pixContainer.innerHTML = `<div class="loader"></div><p>Gerando QR Code...</p>`;
   pixText.value = "Aguarde...";
-  copyBtn.onclick = null;
+  copyBtn.disabled = true;
+  confirmBtn.disabled = true;
+  confirmBtn.dataset.paymentId = "";
+
+  const carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
+  if (!currentUser || carrinho.length === 0) {
+    pixContainer.innerHTML = "";
+    pixErrorEl.textContent = "Erro: Usuário não autenticado ou carrinho vazio.";
+    pixErrorEl.style.display = "block";
+    return;
+  }
 
   try {
-    const chave = "53270726813"; // CPF do usuário
-    const nome = "ERICK XAVIER"; // Nome do recebedor
-    const cidade = "SAO PAULO"; // Cidade do recebedor
-
-    const payload = gerarPayloadPix(chave, nome, cidade, valorTotal);
-    
-    // Gera o QRCode usando a biblioteca qrcode.js
-    new QRCode(pixContainer, {
-        text: payload,
-        width: 200,
-        height: 200,
-        colorDark : "#000000",
-        colorLight : "#ffffff",
-        correctLevel : QRCode.CorrectLevel.M
+    const res = await fetch("/criar-pagamento-mp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        usuario_id: currentUser.id,
+        carrinho: carrinho,
+      }),
     });
 
-    pixText.value = payload;
+    const data = await res.json();
+
+    if (!res.ok) {
+      const errorMessage = data.message || data.mensagem || "Erro desconhecido ao gerar QR Code.";
+      throw new Error(errorMessage);
+    }
+
+    confirmBtn.dataset.paymentId = data.payment_id;
+    pixContainer.innerHTML = `<img src="data:image/jpeg;base64,${data.qr_code_base64}" alt="PIX QR Code" style="width: 200px; height: 200px;">`;
+    pixText.value = data.qr_code;
+    copyBtn.disabled = false;
+    confirmBtn.disabled = false;
 
     copyBtn.onclick = () => {
-      const textToCopy = pixText.value;
-      if (!textToCopy || textToCopy === "Aguarde..." || textToCopy === "Erro na geração do código.") return;
-
-      // Tenta usar o método moderno
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(textToCopy).then(
-          () => {
-            alert("✅ Código copiado! Confirmando pagamento...");
-            confirmarPagamento(); // Processa a compra automaticamente
-          },
-          () => {
-            fallbackCopyTextToClipboard(textToCopy);
-          },
-        );
-      } else {
-        // Usa o método antigo (fallback) se o moderno não estiver disponível
-        fallbackCopyTextToClipboard(textToCopy);
-      }
+      if (!pixText.value || pixText.value === "Aguarde...") return;
+      navigator.clipboard.writeText(pixText.value).then(
+        () => alert("✅ Código PIX copiado!"),
+        () => alert("Falha ao copiar. Tente manualmente.")
+      );
     };
 
-    function fallbackCopyTextToClipboard(text) {
-      pixText.select();
-      try {
-        const successful = document.execCommand("copy");
-        if (successful) {
-          alert("✅ Código copiado! Confirmando pagamento...");
-          confirmarPagamento(); // Processa a compra automaticamente
-        } else {
-          alert("Falha ao copiar. Selecione o texto e copie manualmente.");
-        }
-      } catch (err) {
-        alert("Erro ao copiar. Tente manualmente.");
-      }
-    }
   } catch (err) {
-    console.error("Erro ao gerar PIX QR Code:", err);
-    pixContainer.innerHTML =
-      "<p>Não foi possível gerar o QR Code. Tente novamente mais tarde.</p>";
+    console.error("Erro ao gerar PIX:", err);
+    pixContainer.innerHTML = ""; // Limpa o loader
+    pixErrorEl.textContent = `Falha na comunicação com o sistema de pagamento: ${err.message}`;
+    pixErrorEl.style.display = "block";
     pixText.value = "Erro na geração do código.";
   }
 }
@@ -422,6 +382,10 @@ function renderPagamento() {
   const carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
   const itemsContainer = document.getElementById("payment-items");
   const totalEl = document.getElementById("payment-total");
+  const paymentErrorEl = document.getElementById("payment-error");
+
+  // Limpa erros anteriores ao renderizar
+  if (paymentErrorEl) paymentErrorEl.style.display = "none";
 
   // Mostra os itens do carrinho no resumo
   itemsContainer.innerHTML =
@@ -441,11 +405,70 @@ function renderPagamento() {
   const totalPrice = carrinho.reduce((sum, item) => sum + item.total, 0);
   totalEl.textContent = totalPrice.toFixed(2);
 
-  // Gera o QR Code do PIX
-  gerarQrCodePix(totalPrice);
+  // Setup dos métodos de pagamento
+  setupPaymentTabs();
+  setupCreditCardForm();
+  gerarQrCodeMercadoPago(); // Gera o PIX por padrão
+}
+
+function setupPaymentTabs() {
+    document.querySelectorAll('.payment-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const method = tab.dataset.paymentMethod;
+
+            document.querySelectorAll('.payment-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            document.querySelectorAll('.payment-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            document.getElementById(`${method}-payment-content`).style.display = 'block';
+        });
+    });
+}
+
+async function setupCreditCardForm() {
+    try {
+        const cardForm = mp.cardForm({
+            amount: document.getElementById("payment-total").textContent,
+            iframe: true,
+            form: {
+                id: "form-checkout",
+                cardholderName: { id: "form-checkout__cardholderName", placeholder: "Nome do titular" },
+                cardholderEmail: { id: "form-checkout__cardholderEmail", placeholder: "E-mail" },
+                cardNumber: { id: "form-checkout__cardNumber", placeholder: "Número do cartão" },
+                expirationDate: { id: "form-checkout__expirationDate", placeholder: "MM/YY" },
+                securityCode: { id: "form-checkout__securityCode", placeholder: "CVC" },
+                installments: { id: "form-checkout__installments", placeholder: "Parcelas" },
+                identificationType: { id: "form-checkout__identificationType", placeholder: "Tipo de documento" },
+                identificationNumber: { id: "form-checkout__identificationNumber", placeholder: "Número do documento" },
+                issuer: { id: "form-checkout__issuer", placeholder: "Banco emissor" },
+            },
+            callbacks: {
+                onFormMounted: error => { if (error) return console.warn("Form Mounted handling error: ", error); },
+                onSubmit: event => {
+                    event.preventDefault();
+                    processCardPayment(cardForm);
+                },
+                onFetching: (resource) => {
+                    // console.log("Fetching resource: ", resource);
+                }
+            },
+        });
+    } catch (e) {
+        console.error("Erro ao inicializar o formulário de cartão", e);
+    }
 }
 
 async function confirmarPagamento() {
+  const confirmBtn = document.getElementById("confirm-payment-btn");
+  const paymentErrorEl = document.getElementById("payment-error");
+
+  // Reseta o estado da UI e desabilita o botão
+  paymentErrorEl.style.display = "none";
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = "Verificando...";
+
   if (!currentUser) {
     alert("Sessão expirada. Faça login novamente.");
     showScreen("login-screen");
@@ -455,32 +478,112 @@ async function confirmarPagamento() {
   const carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
   if (carrinho.length === 0) {
     alert("Seu carrinho está vazio.");
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = "Confirmar Pagamento e Gerar Ingressos";
+    return;
+  }
+
+  const paymentId = confirmBtn.dataset.paymentId;
+  if (!paymentId) {
+    paymentErrorEl.textContent = "Não foi possível identificar o pagamento. Tente gerar o QR Code novamente.";
+    paymentErrorEl.style.display = "block";
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = "Confirmar Pagamento e Gerar Ingressos";
     return;
   }
 
   try {
+    // O frontend agora envia o ID do pagamento do Mercado Pago
     const res = await fetch("/comprar-ingressos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         usuario_id: currentUser.id,
         carrinho: carrinho,
+        payment_id: paymentId,
       }),
     });
 
     const data = await res.json();
-    alert(data.mensagem);
 
     if (res.ok) {
+      alert(data.mensagem); // Mensagem de sucesso
       localStorage.removeItem("carrinho");
       atualizarContadorCarrinho();
       await renderMeusIngressos();
       showScreen("purchased-screen");
+    } else {
+      // A API agora retorna mensagens de erro específicas
+      throw new Error(data.mensagem || "Falha ao confirmar a compra.");
     }
   } catch (err) {
-    alert("Erro ao processar a compra. Tente novamente.");
+    paymentErrorEl.textContent = err.message;
+    paymentErrorEl.style.display = "block";
     console.error("Erro na compra:", err);
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = "Confirmar Pagamento e Gerar Ingressos";
   }
+}
+
+async function processCardPayment(cardForm) {
+    const paymentErrorEl = document.getElementById("payment-error");
+    const submitButton = document.getElementById('form-checkout__submit');
+    const loader = document.getElementById('card-loader');
+
+    paymentErrorEl.style.display = 'none';
+    submitButton.disabled = true;
+    loader.style.display = 'block';
+
+    try {
+        const cardToken = await cardForm.createCardToken();
+        if (!cardToken) {
+            throw new Error("Não foi possível gerar o token do cartão. Verifique os dados.");
+        }
+
+        const carrinho = JSON.parse(localStorage.getItem("carrinho")) || [];
+        const paymentData = {
+            token: cardToken.id,
+            issuer_id: cardToken.issuer_id,
+            payment_method_id: cardToken.payment_method_id,
+            transaction_amount: Number(document.getElementById("payment-total").textContent),
+            installments: Number(document.getElementById("form-checkout__installments").value),
+            payer: {
+                email: document.getElementById('form-checkout__cardholderEmail').value,
+                identification: {
+                    type: document.getElementById('form-checkout__identificationType').value,
+                    number: document.getElementById('form-checkout__identificationNumber').value,
+                },
+                name: document.getElementById('form-checkout__cardholderName').value,
+            },
+            usuario_id: currentUser.id,
+            carrinho: carrinho,
+        };
+
+        const res = await fetch("/processar-pagamento-cartao", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(paymentData),
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+            alert(data.mensagem);
+            localStorage.removeItem("carrinho");
+            atualizarContadorCarrinho();
+            await renderMeusIngressos();
+            showScreen("purchased-screen");
+        } else {
+            throw new Error(data.mensagem || "Pagamento recusado.");
+        }
+    } catch (err) {
+        paymentErrorEl.textContent = err.message;
+        paymentErrorEl.style.display = 'block';
+    } finally {
+        submitButton.disabled = false;
+        loader.style.display = 'none';
+    }
 }
 
 // ==================== MEUS INGRESSOS ====================

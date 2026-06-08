@@ -5,6 +5,7 @@ r<!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EventPass - Venda de Ingressos</title>
     <link rel="stylesheet" href="static/styles.css" />
+    <script src="https://sdk.mercadopago.com/js/v2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   </head>
   <body>
@@ -133,47 +134,66 @@ r<!doctype html>
           <button class="btn-back" id="back-from-payment">← Voltar</button>
           <h1>Pagamento</h1>
         </div>
-        <div class="payment-container">
-          <div class="payment-summary">
-            <h3>Resumo do Pedido</h3>
-            <div id="payment-items"></div>
-            <p class="total">Total: R$ <span id="payment-total">0.00</span></p>
-          </div>
-          <div id="pix-payment-container" class="pix-payment-container">
-            <h3>Pague com PIX</h3>
-            <p>
-              Escaneie o QR Code abaixo com o aplicativo do seu banco para
-              realizar o pagamento.
-            </p>
-            <div
-              id="pix-qrcode-container"
-              style="
-                text-align: center;
-                margin: 1.5rem 0;
-                min-height: 200px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-              "
-            >
-              <p>Gerando QR Code...</p>
+        <div class="payment-layout">
+            <div class="payment-summary">
+                <h3>Resumo do Pedido</h3>
+                <div id="payment-items"></div>
+                <p class="total">Total: R$ <span id="payment-total">0.00</span></p>
             </div>
-            <div class="form-group">
-              <label>Ou use o PIX Copia e Cola:</label>
-              <textarea id="pix-copia-e-cola" rows="4" readonly></textarea>
-              <button type="button" id="copy-pix-btn" class="btn btn-secondary">
-                Copiar Código
-              </button>
+            <div class="payment-methods-container">
+                <div class="payment-tabs">
+                    <button class="payment-tab active" data-payment-method="pix">PIX</button>
+                    <button class="payment-tab" data-payment-method="card">Cartão de Crédito</button>
+                </div>
+
+                <div id="payment-error" class="payment-error-box" style="display: none;"></div>
+
+                <!-- MÉTODO PIX -->
+                <div id="pix-payment-content" class="payment-content active">
+                    <h3>Pague com PIX</h3>
+                    <p>Escaneie o QR Code abaixo com o aplicativo do seu banco.</p>
+                    <div id="pix-qrcode-container" class="pix-qrcode-container">
+                        <p>Gerando QR Code...</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Ou use o PIX Copia e Cola:</label>
+                        <textarea id="pix-copia-e-cola" rows="3" readonly></textarea>
+                        <button type="button" id="copy-pix-btn" class="btn btn-secondary">Copiar Código</button>
+                    </div>
+                    <button type="button" id="confirm-payment-btn" class="btn btn-primary" data-payment-id="">
+                        Já paguei, confirmar e gerar ingressos
+                    </button>
+                </div>
+
+                <!-- MÉTODO CARTÃO -->
+                <div id="card-payment-content" class="payment-content">
+                    <h3>Pague com Cartão de Crédito</h3>
+                    <form id="form-checkout">
+                        <div class="form-row">
+                            <div id="form-checkout__cardNumber" class="form-control"></div>
+                            <div id="form-checkout__expirationDate" class="form-control"></div>
+                        </div>
+                        <div class="form-row">
+                            <div id="form-checkout__securityCode" class="form-control"></div>
+                            <select id="form-checkout__issuer" name="issuer" class="form-control"></select>
+                        </div>
+                        <div class="form-row">
+                            <select id="form-checkout__installments" name="installments" class="form-control"></select>
+                            <select id="form-checkout__identificationType" name="identificationType" class="form-control"></select>
+                        </div>
+                        <div class="form-row">
+                            <input type="text" id="form-checkout__cardholderName" name="cardholderName" placeholder="Nome do titular" class="form-control" />
+                            <input type="email" id="form-checkout__cardholderEmail" name="cardholderEmail" placeholder="E-mail" class="form-control" />
+                        </div>
+                        <div class="form-row">
+                            <input type="text" id="form-checkout__identificationNumber" name="identificationNumber" placeholder="Número do documento" class="form-control" />
+                        </div>
+
+                        <button type="submit" id="form-checkout__submit" class="btn btn-primary">Pagar com Cartão</button>
+                        <div id="card-loader" class="loader" style="display: none; margin: 1rem auto 0;"></div>
+                    </form>
+                </div>
             </div>
-          </div>
-          <button
-            type="button"
-            id="confirm-payment-btn"
-            class="btn btn-primary"
-            style="margin-top: 2rem; width: 100%"
-          >
-            Confirmar Pagamento e Gerar Ingressos
-          </button>
         </div>
       </section>
 

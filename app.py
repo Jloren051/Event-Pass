@@ -8,6 +8,7 @@ from functools import wraps
 import bcrypt
 import uuid
 import os
+import mercadopago
 import json
  
 load_dotenv()
@@ -27,11 +28,13 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DB_URI")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = os.path.join(app.static_folder, 'uploads')
 
-# Garante que a pasta de uploads exista
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
     os.makedirs(app.config["UPLOAD_FOLDER"])
 
 db = SQLAlchemy(app)
+
+MERCADOPAGO_TOKEN = "APP_USR-4215736688545258-060516-44b2435ec76016486122d16fe0df96b9-1225559296"
+mp_sdk = mercadopago.SDK(MERCADOPAGO_TOKEN)
 
 class Usuario(db.Model):
     __tablename__ = "usuarios"
@@ -89,14 +92,12 @@ class IngressoComprado(db.Model):
 with app.app_context():
     db.create_all()
 
-    # Criar usuário admin padrão se não existir
     if not Usuario.query.filter_by(is_admin=True).first():
         print("\n⚠️  Nenhum administrador encontrado. Criando admin padrão...")
 
         admin_email = "admin@eventpass.com"
         admin_senha = "adminpassword"
         
-        # Verifica se o usuário já existe para apenas promovê-lo
         usuario_existente = Usuario.query.filter_by(email=admin_email).first()
         if usuario_existente:
             usuario_existente.is_admin = True
@@ -109,7 +110,6 @@ with app.app_context():
         print(f"✅ Administrador criado com sucesso! Use estas credenciais para login:")
         print(f"   Email: {admin_email} | Senha: {admin_senha}\n")
     
-    # Criar eventos padrão se não existirem
     if not Evento.query.first():
         print("\n🌱 Criando eventos padrão...\n")
         
@@ -183,8 +183,6 @@ with app.app_context():
         db.session.commit()
         print("✅ 3 eventos criados com sucesso!\n")
 
-# ==================== AUTENTICAÇÃO ====================
-
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -225,13 +223,11 @@ def cadastrar():
     return jsonify({"mensagem": "Usuário cadastrado com sucesso"}), 201
 
 
-# Decorator para proteger rotas de admin
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         user_id = None
         
-        # Tenta obter user_id do corpo JSON, se houver
         if request.is_json:
             json_data = request.get_json(silent=True)
             if json_data:
@@ -239,7 +235,6 @@ def admin_required(f):
         elif request.form:
             user_id = request.form.get('user_id')
         
-        # Se não encontrou no JSON, tenta obter dos argumentos da URL
         if not user_id:
             user_id = request.args.get('user_id')
 
@@ -247,7 +242,7 @@ def admin_required(f):
             return jsonify({"mensagem": "Autenticação necessária (ID de usuário ausente)."}), 401
 
         try:
-            usuario = Usuario.query.get(int(user_id))
+            usuario = db.session.get(Usuario, int(user_id))
         except (ValueError, TypeError):
             return jsonify({"mensagem": "ID de usuário inválido."}), 400
 
@@ -285,14 +280,11 @@ def login():
         }
     }), 200
 
-# ==================== EVENTOS ====================
-
 @app.route("/eventos", methods=["GET"])
 def listar_eventos():
     try:
         query = Evento.query
 
-        # Filtros
         preco_max = request.args.get('preco_max', type=float)
         categoria = request.args.get('categoria', type=str)
         genero = request.args.get('genero', type=str)
@@ -330,7 +322,7 @@ def listar_eventos():
 
 @app.route("/evento/<int:evento_id>", methods=["GET"])
 def obter_evento(evento_id):
-    evento = Evento.query.get(evento_id)
+    evento = db.session.get(Evento, evento_id)
 
     if not evento:
         return jsonify({"mensagem": "Evento não encontrado"}), 404
@@ -360,7 +352,6 @@ def obter_evento(evento_id):
 @app.route("/criar-evento", methods=["POST"])
 @admin_required
 def criar_evento():
-    # O decorator `admin_required` já validou o acesso
     titulo = request.form.get("titulo", "").strip()
     data = request.form.get("data", "").strip()
     local = request.form.get("local", "").strip()
@@ -369,7 +360,6 @@ def criar_evento():
     tipos_ingresso_json = request.form.get("tipos_ingresso", "[]")
     tipos_ingresso = json.loads(tipos_ingresso_json)
     
-    # ✅ CONVERTER PARA FLOAT COM VALIDAÇÃO
     try:
         preco = float(request.form.get("preco", 0))
     except (ValueError, TypeError):
@@ -387,7 +377,6 @@ def criar_evento():
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
             imagem_url = f"/static/uploads/{unique_filename}"
 
-    # Validar formato de data (DD/MM/YYYY)
     try:
         datetime.strptime(data, "%d/%m/%Y")
     except ValueError:
@@ -406,7 +395,6 @@ def criar_evento():
     db.session.add(novo_evento)
     db.session.flush()
 
-    # Adicionar tipos de ingresso
     if tipos_ingresso:
         for ti in tipos_ingresso:
             tipo = TipoIngresso(
@@ -435,8 +423,7 @@ def criar_evento():
 @app.route("/editar-evento/<int:evento_id>", methods=["PUT"])
 @admin_required
 def editar_evento(evento_id):
-    # O decorator `admin_required` já validou o acesso
-    evento = Evento.query.get(evento_id)
+    evento = db.session.get(Evento, evento_id)
 
     if not evento:
         return jsonify({"mensagem": "Evento não encontrado"}), 404
@@ -449,7 +436,6 @@ def editar_evento(evento_id):
     tipos_ingresso_json = request.form.get("tipos_ingresso", "[]")
     tipos_ingresso = json.loads(tipos_ingresso_json)
     
-    # ✅ CONVERTER PARA FLOAT COM VALIDAÇÃO
     try:
         preco = float(request.form.get("preco", 0))
     except (ValueError, TypeError):
@@ -458,7 +444,6 @@ def editar_evento(evento_id):
     if not titulo or not data or not local or preco <= 0:
         return jsonify({"mensagem": "Preencha todos os campos corretamente"}), 400
 
-    # Validar formato de data
     try:
         datetime.strptime(data, "%d/%m/%Y")
     except ValueError:
@@ -467,7 +452,6 @@ def editar_evento(evento_id):
     if 'imagem' in request.files:
         file = request.files['imagem']
         if file and file.filename != '':
-            # Opcional: deletar a imagem antiga do sistema de arquivos
             filename = secure_filename(file.filename)
             unique_filename = f"{uuid.uuid4()}_{filename}"
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
@@ -480,10 +464,8 @@ def editar_evento(evento_id):
     evento.categoria = categoria
     evento.genero_musical = genero_musical
 
-    # Deletar tipos de ingresso antigos
     TipoIngresso.query.filter_by(evento_id=evento_id).delete()
 
-    # Adicionar novos tipos de ingresso
     if tipos_ingresso:
         for ti in tipos_ingresso:
             tipo = TipoIngresso(
@@ -512,8 +494,7 @@ def editar_evento(evento_id):
 @app.route("/deletar-evento/<int:evento_id>", methods=["DELETE"])
 @admin_required
 def deletar_evento(evento_id):
-    # O decorator `admin_required` já validou o acesso
-    evento = Evento.query.get(evento_id)
+    evento = db.session.get(Evento, evento_id)
 
     if not evento:
         return jsonify({"mensagem": "Evento não encontrado"}), 404
@@ -523,10 +504,8 @@ def deletar_evento(evento_id):
 
     return jsonify({"mensagem": "Evento deletado com sucesso"}), 200
 
-# ==================== COMPRA ====================
-
-@app.route("/comprar-ingressos", methods=["POST"])
-def comprar_ingressos():
+@app.route("/criar-pagamento-mp", methods=["POST"])
+def criar_pagamento_mp():
     dados = request.get_json()
     usuario_id = dados.get("usuario_id")
     carrinho = dados.get("carrinho")
@@ -534,20 +513,176 @@ def comprar_ingressos():
     if not usuario_id or not carrinho:
         return jsonify({"mensagem": "Dados da requisição inválidos"}), 400
 
-    usuario = Usuario.query.get(usuario_id)
+    usuario = db.session.get(Usuario, usuario_id)
+    if not usuario:
+        return jsonify({"mensagem": "Usuário não encontrado"}), 404
+
+    total_price = sum(item.get("total", 0) for item in carrinho)
+    if total_price <= 0:
+        return jsonify({"mensagem": "O valor total da compra deve ser maior que zero."}), 400
+
+    items_description = ", ".join([f"{item['quantidade']}x {item['tipo_nome']}" for item in carrinho])
+
+    payment_data = {
+        "transaction_amount": round(float(total_price), 2),
+        "description": items_description,
+        "payment_method_id": "pix",
+        "payer": {
+            "email": usuario.email,
+        }
+    }
+
+    try:
+        print(f"ℹ️  Criando pagamento no Mercado Pago para o usuário {usuario.email} no valor de {total_price}")
+        request_options = mercadopago.config.RequestOptions()
+        request_options.custom_headers = { 'x-idempotency-key': str(uuid.uuid4()) }
+
+        payment_result = mp_sdk.payment().create(payment_data, request_options)
+        payment = payment_result.get("response")
+
+        if payment_result.get("status") in [200, 201]:
+            print(f"✅ Pagamento criado com sucesso! ID: {payment['id']}")
+            return jsonify({
+                "payment_id": payment["id"],
+                "qr_code_base64": payment["point_of_interaction"]["transaction_data"]["qr_code_base64"],
+                "qr_code": payment["point_of_interaction"]["transaction_data"]["qr_code"]
+            }), 201
+        else:
+            print("❌ Erro na API do Mercado Pago. Status:", payment_result.get("status"))
+            print("   Detalhes do erro:", payment)
+            
+            error_message = "Erro ao criar pagamento no Mercado Pago."
+            if payment and 'message' in payment:
+                error_message = payment['message']
+            
+            return jsonify({"mensagem": error_message, "details": payment}), payment_result.get("status", 500)
+
+    except Exception as e:
+        print(f"🚨 Exceção ao criar pagamento no Mercado Pago: {e}")
+        return jsonify({"mensagem": "Erro interno ao se comunicar com o serviço de pagamento."}), 500
+
+@app.route("/processar-pagamento-cartao", methods=["POST"])
+def processar_pagamento_cartao():
+    data = request.get_json()
+    token = data.get("token")
+    issuer_id = data.get("issuer_id")
+    payment_method_id = data.get("payment_method_id")
+    installments = data.get("installments")
+    carrinho = data.get("carrinho")
+    usuario_id = data.get("usuario_id")
+    payer_data = data.get("payer", {})
+
+    if not all([token, payment_method_id, installments, carrinho, usuario_id, payer_data]):
+        return jsonify({"mensagem": "Dados de pagamento incompletos."}), 400
+
+    usuario = db.session.get(Usuario, usuario_id)
+    if not usuario:
+        return jsonify({"mensagem": "Usuário não encontrado."}), 404
+
+    total_price = sum(item.get("total", 0) for item in carrinho)
+    if total_price <= 0:
+        return jsonify({"mensagem": "O valor total da compra deve ser maior que zero."}), 400
+
+    cardholder_name = payer_data.get("name", "")
+    name_parts = cardholder_name.strip().split(' ')
+    first_name = name_parts[0]
+    last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+
+    payment_data = {
+        "transaction_amount": round(float(total_price), 2),
+        "token": token,
+        "installments": int(installments),
+        "payment_method_id": payment_method_id,
+        "issuer_id": issuer_id,
+        "payer": {
+            "email": payer_data.get("email"),
+            "first_name": first_name,
+            "last_name": last_name,
+            "identification": {
+                "type": payer_data.get("identification", {}).get("type"),
+                "number": payer_data.get("identification", {}).get("number")
+            }
+        }
+    }
+
+    try:
+        payment_response = mp_sdk.payment().create(payment_data)
+        payment = payment_response.get("response")
+
+        if payment and payment.get("status") == "approved":
+            for item in carrinho:
+                tipo_ingresso = db.session.get(TipoIngresso, item.get("tipo_ingresso_id"))
+                if not tipo_ingresso or tipo_ingresso.quantidade_disponivel < int(item.get("quantidade")):
+                    db.session.rollback()
+                    # Idealmente, aqui você deveria tentar fazer o estorno do pagamento
+                    return jsonify({"mensagem": f"Estoque insuficiente para '{tipo_ingresso.nome}'. O pagamento foi aprovado, mas a compra falhou. Contate o suporte."}), 409
+
+                tipo_ingresso.quantidade_disponivel -= int(item.get("quantidade"))
+                nova_compra = IngressoComprado(
+                    codigo=f"EVT-{tipo_ingresso.evento_id}-{usuario_id}-{str(uuid.uuid4())[:8].upper()}",
+                    usuario_id=usuario_id,
+                    evento_id=item.get("evento_id"),
+                    tipo_ingresso_id=item.get("tipo_ingresso_id"),
+                    quantidade=int(item.get("quantidade")),
+                    preco_total=float(item.get("total"))
+                )
+                db.session.add(nova_compra)
+            
+            db.session.commit()
+            return jsonify({"mensagem": "Pagamento aprovado e ingressos gerados com sucesso!"}), 201
+        else:
+            print("❌ Pagamento com cartão falhou. Resposta da API:")
+            print(json.dumps(payment, indent=4))
+            
+            error_message = "Pagamento recusado."
+            if payment and payment.get('message'):
+                error_message = payment.get('message')
+            elif payment and payment.get('status_detail'):
+                error_message = payment.get('status_detail')
+
+            return jsonify({"mensagem": error_message}), 402
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"mensagem": f"Erro ao processar pagamento com cartão: {e}"}), 500
+
+@app.route("/comprar-ingressos", methods=["POST"])
+def comprar_ingressos():
+    dados = request.get_json()
+    usuario_id = dados.get("usuario_id")
+    carrinho = dados.get("carrinho")
+    payment_id = dados.get("payment_id")
+
+    if not all([usuario_id, carrinho, payment_id]):
+        return jsonify({"mensagem": "Dados da requisição inválidos"}), 400
+
+    try:
+        payment_info = mp_sdk.payment().get(payment_id)
+        if payment_info.get("status") not in [200, 201]:
+            print(f"⚠️  Pagamento com ID {payment_id} não encontrado no Mercado Pago.")
+            return jsonify({"mensagem": "Pagamento não encontrado no Mercado Pago."}), 404
+        
+        payment = payment_info["response"]
+        print(f"ℹ️  Verificando pagamento {payment_id}. Status: {payment.get('status')}, Detalhe: {payment.get('status_detail')}")
+        if payment.get("status") != "approved":
+            status_detail = payment.get('status_detail', 'desconhecido')
+            mensagem = f"Pagamento ainda não foi aprovado. Status: {status_detail}. Tente novamente em alguns instantes ou pague o PIX."
+            return jsonify({"mensagem": mensagem}), 402
+    except Exception as e:
+        print(f"🚨 Exceção ao verificar pagamento no Mercado Pago: {e}")
+        return jsonify({"mensagem": "Erro ao verificar o status do pagamento com o provedor."}), 500
+
+    usuario = db.session.get(Usuario, usuario_id)
     if not usuario:
         return jsonify({"mensagem": "Usuário não encontrado"}), 404
 
     try:
         for item in carrinho:
-            tipo_ingresso = TipoIngresso.query.get(item.get("tipo_ingresso_id"))
+            tipo_ingresso = db.session.get(TipoIngresso, item.get("tipo_ingresso_id"))
             if not tipo_ingresso:
-                db.session.rollback()
                 return jsonify({"mensagem": f"Tipo de ingresso ID {item.get('tipo_ingresso_id')} não encontrado."}), 404
 
             quantidade_comprada = int(item.get("quantidade"))
             if tipo_ingresso.quantidade_disponivel < quantidade_comprada:
-                db.session.rollback()
                 return jsonify({"mensagem": f"Estoque insuficiente para '{tipo_ingresso.nome}'."}), 400
 
             tipo_ingresso.quantidade_disponivel -= quantidade_comprada
@@ -572,7 +707,7 @@ def comprar_ingressos():
 
 @app.route("/meus-ingressos/<int:usuario_id>", methods=["GET"])
 def meus_ingressos(usuario_id):
-    if not Usuario.query.get(usuario_id):
+    if not db.session.get(Usuario, usuario_id):
         return jsonify({"mensagem": "Usuário não encontrado"}), 404
 
     compras = IngressoComprado.query.filter_by(usuario_id=usuario_id).order_by(IngressoComprado.data_compra.desc()).all()
@@ -598,8 +733,6 @@ def meus_ingressos(usuario_id):
         })
 
     return jsonify(lista_ingressos), 200
-
-# ==================== SEED ====================
 
 @app.route("/seed-eventos", methods=["POST"])
 def seed_eventos():
